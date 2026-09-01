@@ -5,12 +5,12 @@ __pycache__/
 venv/
 env/
 
+# 运行时生成的数据文件
+sensor_data.json
+
 # IDE
 .idea/
 .vscode/
-
-# frontend
-node_modules/
 
 # OS
 .DS_Store
