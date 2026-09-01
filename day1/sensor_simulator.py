@@ -11,8 +11,8 @@
   6. 写寄存器: 订阅命令主题, 收到 {"cmd":"write","register":偏移,"value":整数}
      时用功能码 0x06 写入本组寄存器, 并回 write_ack(呼应"可读可写"要求)
 
-上报 topic : device/sensor/temp      (数据/心跳/在线状态)
-命令 topic : device/sensor/temp/cmd  (read / query / write)
+上报 topic : device/sensor/sevengroup      (数据/心跳/在线状态)
+命令 topic : device/sensor/sevengroup/cmd  (read / query / write)
 
 运行: python sensor_simulator.py
 依赖: pip install pymodbus==3.6.9 paho-mqtt==1.6.1
@@ -46,9 +46,9 @@ DEFAULT_CONFIG = {
     "mqtt": {
         "host": "172.16.4.211", "port": 9783,
         "username": "test", "password": "123456",
-        "client_id": "sensor_public_demo",
-        "topic_data": "device/sensor/temp",
-        "topic_cmd": "device/sensor/temp/cmd"
+        "client_id": "sensor_sevengroup",
+        "topic_data": "device/sensor/sevengroup",
+        "topic_cmd": "device/sensor/sevengroup/cmd"
     },
     # 寄存器含义映射: 相对偏移 -> 名称/缩放/是否按有符号解释; 未映射的按原始值上报
     "register_map": {

@@ -12,9 +12,9 @@
     "port": 9783,
     "username": "test",
     "password": "123456",
-    "client_id": "sensor_public_demo",
-    "topic_data": "device/sensor/temp",
-    "topic_cmd": "device/sensor/temp/cmd"
+    "client_id": "sensor_sevengroup",
+    "topic_data": "device/sensor/sevengroup",
+    "topic_cmd": "device/sensor/sevengroup/cmd"
   },
   "register_map": {
     "0": { "name": "temperature", "scale": 0.1, "signed": true, "unit": "C" },
