@@ -28,6 +28,8 @@
 
 ## 2. 总体架构
 
+![项目总览图](docs/images/项目总览图.png)
+
 | 层级 | 说明 |
 | --- | --- |
 | **设备层** | 真实继电器设备（单片机控制、传感采集、Wi-Fi/Ethernet 联网）以及参数可配置的模拟/虚拟设备 |
@@ -113,7 +115,11 @@ smart-relay-control-system/
 
 > 开发环境安装与项目创建（环境部署）。涵盖开发工具/IDE 选择、环境安装、平台账号注册、项目仓库创建、环境配置、环境验证、项目初始化与首次提交。
 
+![开发环境安装与项目创建全流程图](docs/images/开发环境.png)
+
 ### 7.2 阶段 1 · 物联网通信基础（Day1）
+
+![Day1 物联网通信架构与协议全景](docs/images/阶段1.png)
 
 - **Modbus TCP 采集**：周期读取保持寄存器
 - **MQTT 上报**：变化检测 + retain 消息 + 断线重连
@@ -124,6 +130,8 @@ smart-relay-control-system/
 > 详见 [simulator/day1/README.md](simulator/day1/README.md)
 
 ### 7.3 阶段 2 · JetLinks 云平台接入（Day2）
+
+![Day2 JetLinks 接入与继电器控制](docs/images/阶段2.png)
 
 - **方式一（非标准格式 → 标准格式）**：EMQX 规则引擎转换 Day1 原始报文为 JetLinks 官方格式
 - **方式二（标准格式直连）**：模拟器直接按 JetLinks 官方协议上报属性
