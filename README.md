@@ -1,189 +1,184 @@
-# 智能继电器控制系统（Smart Relay Control System）
+# 智能继电器管控系统 · Smart Relay Control System
 
-一个覆盖 **设备 → 协议 → 云平台 → 业务平台 → 大屏应用** 全链路的物联网继电器管控系统，实现设备**远程控制、虚拟化管理、权限管控与可视化展示**。
+> 打通 **Modbus 设备采集 → MQTT Broker → JetLinks 云平台 → 双向远程控制** 全链路的物联网继电器管控方案。以 Python 模拟器为载体，完整实现了从物理寄存器读写、MQTT 消息发布订阅、EMQX 规则引擎格式转换，到 JetLinks 物模型上报与属性下发的端到端闭环。
 
----
+**当前进度：阶段 2 / 10（Day1 + Day2 已完成，Day3~Day10 持续迭代中）**
 
-## 本文档的目录
-
-> 本教程按推进顺序阅读：**先环境 → 再项目介绍 / 接口文档 → 最后是按天学习内容**。
-
-- [1. 项目简介](#1-项目简介)
-- [2. 总体架构](#2-总体架构)
-- [3. 端到端业务流程](#3-端到端业务流程)
-- [4. 核心能力（技术要点）](#4-核心能力技术要点)
-- [5. 技术栈](#5-技术栈)
-- [6. 项目结构](#6-项目结构)
-- [7. 学习路线](#7-学习路线)
-- [8. 快速开始](#8-快速开始)
-- [9. 许可与声明](#9-许可与声明)
+| 阶段 | 内容 | 状态 |
+|---|---|---|
+| 0 · 环境准备 | Git 双远程、Python 环境、JetLinks + EMQX 部署 | ✅ |
+| 1 · Day1 | Modbus 采集 + MQTT 温湿度传感器模拟器（原始报文） | ✅ |
+| 2 · Day2 | JetLinks 两种接入方式 + 继电器远程控制全链路 | ✅ |
+| 3 · Day3 | 多通道继电器模拟器（8 路，上报/响应/重连） | 🔜 |
+| 4~10 | 固件、后端、前端、大屏、安全、联调、答辩 | 📋 |
 
 ---
 
-## 1. 项目简介
+## ✨ 已实现亮点
 
-本系统面向智能继电器设备，提供从硬件接入到云端管理、再到前端大屏展示的完整闭环。核心目标是打通「设备端 → 局域网/公网 → 云平台 → 业务平台 → 可视化大屏」全链路，让真实继电器与虚拟设备都能被统一管理和控制，并支持细粒度的权限与可控设备管理。
+- **两种设备接入方式对比落地**：同一台模拟器同时支持 EMQX 规则引擎转换（非标准→标准）与 JetLinks 官方 MQTT 协议直连，完整跑通两种链路并验证优劣
+- **继电器远程控制全链路打通**：JetLinks 控制台编辑属性 → MQTT write 命令下发 → Modbus 写寄存器 → 继电器状态变更 → 电流联动（每开一路 +0.5A）→ 设备自动上报，全链路无断点
+- **MQTT 可靠性机制完整实现**：Retain 消息保证新订阅者立即获取最新值、遗嘱消息（LWT）异常掉线通知、心跳保活、断线自动重连
+- **真实踩坑与问题解决**：JetLinks 物模型标识拼写必须与代码属性名完全一致、EMQX 6.1.4 版本不支持 `json_extract`/`unix_timestamp` 需用最简 SQL、paho-mqtt 回调跨线程操作 Modbus 需通过 queue 解耦
 
 ---
 
-## 2. 总体架构
+## 🏗️ 系统架构
 
 ![项目总览图](docs/images/项目总览图.png)
 
-| 层级 | 说明 |
-| --- | --- |
-| **设备层** | 真实继电器设备（单片机控制、传感采集、Wi-Fi/Ethernet 联网）以及参数可配置的模拟/虚拟设备 |
-| **协议与网络层** | MQTT / Modbus RTU（RS485）、自行定义协议；局域网内 Mesh，公网 4G/Wi-Fi 上云 |
-| **云平台层** | JetLinks 开源物联网平台（连接与设备管理）：设备接入、认证授权、物模型管理、规则引擎、数据存储 |
-| **业务平台层（后端）** | API 网关、用户服务、权限服务、设备服务、控制服务；MySQL 数据存储、Redis 缓存；对外提供 RESTful API / WebSocket / SSE |
-| **前端 & 可视化层** | Vue3 + Element Plus 实现设备/流程/虚拟化管理、控制台控制、实时状态；ECharts / DataV 大屏可视化 |
-| **用户层** | 运维工程师、管理员、普通用户（平台/APP/大屏多端） |
+```
+┌────────────────────┐     ┌─────────────────┐     ┌─────────────────────┐
+│  Modbus TCP 从站   │────▶│  MQTT Broker    │────▶│  JetLinks 物联网    │
+│  (真实设备/模拟器)  │◀────│  EMQX 9783      │◀────│  平台 (MQTT 客户端) │
+└────────────────────┘     └─────────────────┘     └─────────────────────┘
+                                    │
+                         ┌──────────┴──────────┐
+                         ▼                     ▼
+                  规则引擎 (方式一)      标准直连 (方式二)
+                  SELECT * FROM topic    /{productId}/{deviceId}/
+                  ${payload.temperature} properties/report
+```
+
+### 两种接入方式对比
+
+| | 方式一：EMQX 规则转换 | 方式二：JetLinks 直连 |
+|---|---|---|
+| 设备侧改动 | **零改动**，保持原始报文格式 | 需按 JetLinks 官方协议上报 |
+| 双向通信 | ❌ 只有上行 | ✅ 完整 write/read 响应 |
+| 适用场景 | 旧设备不改固件快速接入 | 正规生产设备首选方案 |
+| 我们的实现 | `emqx_rule.sql` + Day1 模拟器 | `sensor_simulator_jl.py` / `relay_simulator_jl.py` |
 
 ---
 
-## 3. 端到端业务流程
+## 🔧 关键技术实现
 
-1. **用户操作**：用户在前端点击「开/关 CH1」
-2. **后端接收请求**：前端 → 后端 API 网关
-3. **权限校验**：RBAC 权限校验通过
-4. **生成命令**：由平台生成控制指令
-5. **下发布到平台**：通过 JetLinks 下发指令
-6. **设备接收并执行**：继电器执行开/关
-7. **状态回传**：设备将状态回传（ON/OFF）
-8. **平台处理**：JetLinks 处理并同步数据
-9. **业务平台同步**：业务平台状态更新并缓存状态
-10. **前端订阅刷新**：通过 WebSocket 推送，前端状态刷新
+### Day1 · 温湿度传感器（非标准报文）
+
+```
+寄存器布局：reg0 = temperature (×0.1, 有符号)  reg1 = humidity (×0.1, 无符号)
+MQTT 上报 topic：device/sensor/sevengroup
+MQTT 命令 topic：device/sensor/sevengroup/cmd  ← write / read / query
+```
+
+**核心设计**：5 秒轮询 Modbus → 变化检测 → MQTT 上报；值无变化时每 60 秒发心跳；遗嘱主题为 `device/sensor/online`，值 `"offline"`。跨线程安全：paho-mqtt 的 `on_message` 回调在网络线程执行，用 `queue.Queue` 把命令传给主循环处理 Modbus 操作。
+
+### Day2 · JetLinks 接入 + 继电器控制
+
+```
+继电器物模型 (product_id=relay-cc, device_id=relaycc)：
+┌────────┬─────────┬───────┬──────┬──────────┬─────────────────┐
+│ 标识    │ 名称     │ 类型   │ 读写  │ Modbus   │ 说明             │
+├────────┼─────────┼───────┼──────┼──────────┼─────────────────┤
+│ relay1 │ 继电器1  │ int   │ 读写  │ reg2     │ 0=关 / 1=开      │
+│ relay2 │ 继电器2  │ int   │ 读写  │ reg3     │                  │
+│ relay3 │ 继电器3  │ int   │ 读写  │ reg4     │                  │
+│ relay4 │ 继电器4  │ int   │ 读写  │ reg5     │                  │
+│ current│ 总电流   │ float │ 只读  │ reg6     │ ×0.1, 联动计算   │
+│ voltage│ 电源电压 │ float │ 只读  │ reg7     │ ×0.1, 218~222V  │
+└────────┴─────────┴───────┴──────┴──────────┴─────────────────┘
+```
+
+**远程控制链路（已完整验证）**：
+
+```
+JetLinks 控制台编辑 relay1=1
+  → MQTT 下发: /relay-cc/relaycc/properties/write
+    payload: {"messageId":"xxx","properties":{"relay1":1}}
+  → relay_simulator_jl.py 收到 → Modbus write_register(2, 1)
+  → Modbus 从站自动联动: 电流 += 0.5A
+  → 回复 JetLinks: /relay-cc/relaycc/properties/write/reply
+    payload: {"messageId":"xxx","success":true,"properties":{"relay1":1}}
+  → 模拟器主动上报新状态 → JetLinks 界面刷新
+```
+
+### EMQX 规则引擎（方式一）
+
+```sql
+-- EMQX 6.1.4 不支持 unix_timestamp / json_extract / IS NOT NULL
+-- 最简可用版本
+SELECT * FROM "device/sensor/sevengroup"
+```
+
+动作配置：消息重发布到 `/sensor-cc/sensorcc/properties/report`，Payload 模板提取字段：
+```json
+{
+  "timestamp": ${ts},
+  "messageId": "${messageId}",
+  "properties": {
+    "temperature": ${payload.temperature},
+    "humidity": ${payload.humidity}
+  }
+}
+```
 
 ---
 
-## 4. 核心能力（技术要点）
-
-- **真实设备接入与模拟**：真实继电器接入 + 虚拟设备模拟，模拟与测试能力
-- **多协议支持**：MQTT / Modbus RTU / 自定义协议
-- **云端与数据**：JetLinks 平台（连接+设备+物模型）、MySQL 持久化、Redis 缓存
-- **业务与应用**：权限与可控设备、虚拟化管理、设备控制、状态实时同步
-- **安全与权限**：RBAC 权限模块、可控设备管理、登录鉴权、数据存储加密
-- **实时交互**：WebSocket / SSE 实时推送
-
----
-
-## 5. 技术栈
+## 🧱 技术栈
 
 | 类别 | 技术 |
-| --- | --- |
-| 设备端 | ESP32、C/C++、Python |
-| 通信协议 | MQTT、Modbus TCP/RTU |
-| 云平台 | JetLinks（开源物联网平台）、EMQX（MQTT Broker） |
-| 数据库 | MySQL、Redis |
-| 前端 | Vue3、Element Plus |
-| 可视化 | ECharts、DataV |
-| 部署 | Docker、Nginx |
+|---|---|
+| 设备端 | Python 3.10, pymodbus 3.6.9, paho-mqtt 1.6.1 |
+| 通信 | Modbus TCP (功能码 0x03 / 0x06), MQTT v3.1.1 (QoS 0/1, Retain, LWT) |
+| 云平台 | JetLinks (开源 IoT 平台, MQTT 接入模式), EMQX 6.1.4 (Broker + 规则引擎) |
+| 测试 | MQTTX, 本地 Modbus 从站模拟器 |
+| 协作 | Git + GitHub/Gitee 双远程, Markdown 文档 |
 
 ---
 
-## 6. 项目结构
+## 📂 项目结构
 
 ```
 smart-relay-control-system/
-├── simulator/                 # 模拟器 (Python)
-│   ├── day1/                  # 阶段1: 温湿度传感器模拟器 (原始报文)
-│   ├── day2/                  # 阶段2: JetLinks 接入 + 继电器扩展
-│   │   ├── sensor_simulator_jl.py   # 温湿度 JetLinks 直连版
-│   │   ├── relay_simulator_jl.py     # 继电器 JetLinks 直连版 ✨
-│   │   ├── emqx_rule.sql            # EMQX 规则引擎配置 (方式一)
-│   │   ├── test_format_compare.py   # 两种格式对比测试脚本
-│   │   └── config_*.json            # 各种配置文件
-│   ├── tools/                 # 辅助工具 (Modbus 从站模拟器等)
-│   └── requirements.txt
-├── docs/                      # 文档
-│   └── images/                # 架构图 / 流程图等图片资源
-├── firmware/                  # 设备固件（ESP32）
-├── backend/                   # 后端服务（API 网关、业务服务）
-├── frontend/                  # 前端（Vue3 + Element Plus）
-├── src/                       # 源文件
-├── tools/                     # 工具脚本
+├── simulator/
+│   ├── day1/                        # 阶段1: 温湿度传感器 (原始报文) ✅
+│   │   ├── sensor_simulator.py       # Modbus 采集 + MQTT 上报 + 双向命令
+│   │   ├── config.json
+│   │   ├── bom.txt
+│   │   └── README.md
+│   ├── day2/                        # 阶段2: JetLinks 接入 + 继电器 ✅
+│   │   ├── sensor_simulator_jl.py    # 温湿度 JetLinks 直连版
+│   │   ├── relay_simulator_jl.py      # 继电器 JetLinks 直连版
+│   │   ├── config_relay.json          # 继电器配置 (product_id / register_map)
+│   │   ├── emqx_rule.sql              # EMQX 规则引擎 SQL
+│   │   ├── test_format_compare.py     # 两种格式对比测试
+│   │   └── README.md
+│   ├── day3/...day10/               # 后续阶段待实现 🔜
+│   ├── tools/
+│   │   └── modbus_slave_sim.py        # 本地 Modbus TCP 从站模拟器
+│   └── README.md
+├── docs/images/                      # 架构图
+├── backend/ / frontend/ / firmware/  # 待补充
 ├── .gitignore
-├── README.md                  # 本文档
-└── bom.txt
+├── LICENSE
+└── README.md
 ```
 
 ---
 
-## 7. 学习路线
-
-### 7.1 阶段 0 · 环境准备
-
-> 开发环境安装与项目创建（环境部署）。涵盖开发工具/IDE 选择、环境安装、平台账号注册、项目仓库创建、环境配置、环境验证、项目初始化与首次提交。
-
-![开发环境安装与项目创建全流程图](docs/images/开发环境.png)
-
-### 7.2 阶段 1 · 物联网通信基础（Day1）
-
-![Day1 物联网通信架构与协议全景](docs/images/阶段1.png)
-
-- **Modbus TCP 采集**：周期读取保持寄存器
-- **MQTT 上报**：变化检测 + retain 消息 + 断线重连
-- **JSON 存储**：本地持久化最新值
-- **心跳 / 遗嘱消息**：证明在线与异常掉线通知
-- **双向命令**：订阅 cmd topic 响应 write/read/query
-
-> 详见 [simulator/day1/README.md](simulator/day1/README.md)
-
-### 7.3 阶段 2 · JetLinks 云平台接入（Day2）
-
-![Day2 JetLinks 接入与继电器控制](docs/images/阶段2.png)
-
-- **方式一（非标准格式 → 标准格式）**：EMQX 规则引擎转换 Day1 原始报文为 JetLinks 官方格式
-- **方式二（标准格式直连）**：模拟器直接按 JetLinks 官方协议上报属性
-- **继电器扩展**：在物模型中新增继电器开关属性，实现远程控制
-- **扩展属性定义**：电流、电压等监测属性
-
-> 详见 [simulator/day2/README.md](simulator/day2/README.md)
-
----
-
-## 8. 快速开始
-
-### 8.1 环境要求
-
-- Python 3.10+
-- Git（含常用配置：`user.name`、`user.email`）
-- MQTTX（测试工具）
-- JetLinks 云平台（部署或可用实例）
-- EMQX Broker（MQTT 消息服务器）
-
-### 8.2 安装依赖
+## 🚀 快速上手
 
 ```bash
+# 1. 安装依赖
 pip install pymodbus==3.6.9 paho-mqtt==1.6.1
+
+# 2. 启动本地 Modbus 从站 (可选, 无真实设备时用)
+python simulator/tools/modbus_slave_sim.py
+
+# 3. 启动继电器模拟器 (Day2, JetLinks 直连)
+#    先确认 config_relay.json 里 broker / product_id / device_id 配置正确
+python simulator/day2/relay_simulator_jl.py
+
+# 4. 启动温湿度模拟器 (Day1, 原始报文)
+python simulator/day1/sensor_simulator.py
 ```
 
-### 8.3 运行 Day1 温湿度模拟器
-
-```bash
-cd simulator/day1
-python sensor_simulator.py
-```
-
-### 8.4 运行 Day2 继电器模拟器
-
-```bash
-cd simulator/day2
-python relay_simulator_jl.py
-```
-
-### 8.5 本地测试（无真实 Modbus 设备时）
-
-```bash
-# 启动本地 Modbus 从站模拟器
-cd simulator/tools
-python modbus_slave_sim.py
-
-# 然后改 day2/config_relay.json 里 host 为 127.0.0.1
-```
+JetLinks 侧需提前创建：
+- 产品 `relay-cc` + 设备 `relaycc` + 物模型（relay1~4 / current / voltage）
+- 产品 `sensor-cc` + 设备 `sensorcc` + 物模型（temperature / humidity）
 
 ---
 
-## 9. 许可与声明
+## 📄 License
 
-本仓库为小组实验项目，最终版权与许可信息将随项目完善补充。
+MIT License. See [LICENSE](./LICENSE) for details.
