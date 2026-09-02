@@ -47,6 +47,8 @@ TOPIC_WRITE = ""
 TOPIC_WRITE_REPLY = ""
 TOPIC_READ = ""
 TOPIC_READ_REPLY = ""
+TOPIC_INVOKE = ""
+TOPIC_INVOKE_REPLY = ""
 
 
 def load_json(path, default):
@@ -160,6 +162,24 @@ def publish_read_reply(message_id, properties, success=True):
         log.warning("回复异常: %s", e)
 
 
+def publish_invoke_reply(message_id, success=True, properties=None):
+    if not TOPIC_INVOKE_REPLY:
+        return
+    payload = {
+        "timestamp": now_ms(),
+        "messageId": message_id,
+        "success": success,
+    }
+    if properties:
+        payload["properties"] = properties
+    text = json.dumps(payload, ensure_ascii=False)
+    try:
+        mqtt_client.publish(TOPIC_INVOKE_REPLY, text, qos=1)
+        log.info("回复 invoke/reply  success=%s", success)
+    except (OSError, RuntimeError) as e:
+        log.warning("回复异常: %s", e)
+
+
 # ==================== MQTT 回调 ====================
 
 def on_connect(client, _userdata, _flags, rc):
@@ -169,6 +189,7 @@ def on_connect(client, _userdata, _flags, rc):
     log.info("MQTT 已连接")
     client.subscribe(TOPIC_WRITE, qos=1)
     client.subscribe(TOPIC_READ, qos=1)
+    client.subscribe(TOPIC_INVOKE, qos=1)
     wq.put(("report_all",))
 
 
@@ -207,6 +228,12 @@ def on_message(_client, _userdata, msg):
     elif topic == TOPIC_READ:
         wq.put(("read_props", message_id, cmd.get("properties", [])))
 
+    elif topic == TOPIC_INVOKE:
+        func_id = cmd.get("functionId", "")
+        params = cmd.get("inputs", cmd.get("properties", {}))
+        log.info("收到 JetLinks 功能调用: functionId=%s inputs=%s", func_id, params)
+        wq.put(("invoke_func", message_id, func_id, params))
+
     else:
         log.info("收到未知 topic 消息: %s", topic)
 
@@ -240,6 +267,7 @@ def main():
     global mqtt_client, mb_client, reg_base, reg_count, unit_id
     global mb_cfg, mq_cfg, reg_map, store
     global TOPIC_REPORT, TOPIC_WRITE, TOPIC_WRITE_REPLY, TOPIC_READ, TOPIC_READ_REPLY
+    global TOPIC_INVOKE, TOPIC_INVOKE_REPLY
 
     cfg = load_json(CONFIG_PATH, {})
     mb_cfg = cfg.get("modbus", {})
@@ -256,6 +284,8 @@ def main():
     TOPIC_WRITE_REPLY = f"/{product_id}/{device_id}/properties/write/reply"
     TOPIC_READ = f"/{product_id}/{device_id}/properties/read"
     TOPIC_READ_REPLY = f"/{product_id}/{device_id}/properties/read/reply"
+    TOPIC_INVOKE = f"/{product_id}/{device_id}/function/invoke"
+    TOPIC_INVOKE_REPLY = f"/{product_id}/{device_id}/function/invoke/reply"
 
     reg_base = int(mb_cfg.get("register_start", 2))
     reg_count = int(mb_cfg.get("register_count", 6))
@@ -269,7 +299,7 @@ def main():
              mq_cfg.get("host"), mq_cfg.get("port"), product_id, device_id)
     log.info("继电器映射: " + ", ".join(f"{r['name']}→reg{r['register']}" for r in relay_order))
     log.info("上报 topic : %s", TOPIC_REPORT)
-    log.info("订阅 topic : %s  %s", TOPIC_WRITE, TOPIC_READ)
+    log.info("订阅 topic : %s  %s  %s", TOPIC_WRITE, TOPIC_READ, TOPIC_INVOKE)
 
     # ---- MQTT 连接 ----
     client_id = mq_cfg.get("client_id", device_id)
@@ -334,8 +364,72 @@ def main():
                                 break
                     success = len(write_results) > 0
                     publish_write_reply(msg_id, write_results if success else properties, success)
-                    # 写入后立即重新采集最新状态
-                    next_poll = 0
+                    # 写入后主动上报最新状态 (不等轮询)
+                    if success:
+                        try:
+                            rr = mb_client.read_holding_registers(reg_base, count=reg_count, slave=unit_id)
+                            if not rr.isError():
+                                regs = list(rr.registers)
+                                values = parse_values(regs, reg_map)
+                                store["registers"] = regs
+                                store["values"] = values
+                                store["last_change"] = now_s()
+                                save_json(DATA_PATH, store)
+                                publish_properties(values)
+                        except Exception as e:
+                            log.warning("写入后读取失败: %s", e)
+
+                elif action == "invoke_func":
+                    _, msg_id, func_id, params = job
+                    log.info("处理功能调用: %s  参数: %s", func_id, params)
+                    invoke_results = {}
+                    invoke_ok = False
+                    # 功能调用里的参数也是属性名=值, 处理方式同 write
+                    for prop_name, prop_value in params.items():
+                        for reg_offset, spec in reg_map.items():
+                            if spec["name"] == prop_name:
+                                reg_addr = reg_base + int(reg_offset)
+                                if isinstance(prop_value, bool):
+                                    reg_value = 1 if prop_value else 0
+                                    prop_value = reg_value
+                                elif isinstance(prop_value, str):
+                                    reg_value = 1 if prop_value.lower() in ("1", "on", "open", "true") else 0
+                                    prop_value = reg_value
+                                else:
+                                    reg_value = int(prop_value) if int(prop_value) in (0, 1) else 0
+                                    prop_value = reg_value
+                                if mb_client is None and now - last_retry >= RECONNECT_S:
+                                    last_retry = now
+                                    modbus_connect()
+                                if mb_client is None:
+                                    log.warning("Modbus 未连接, 无法执行功能调用")
+                                    break
+                                try:
+                                    rr = mb_client.write_register(reg_addr, reg_value, slave=unit_id)
+                                    if not rr.isError():
+                                        invoke_results[prop_name] = prop_value
+                                        invoke_ok = True
+                                        log.info("功能调用 %s: %s=%s  (寄存器0x%04X=%s)",
+                                                 func_id, prop_name, prop_value, reg_addr, reg_value)
+                                except Exception as e:
+                                    log.warning("功能调用 Modbus 写异常: %s", e)
+                                    modbus_close()
+                                break
+                    publish_invoke_reply(msg_id, invoke_ok, invoke_results)
+                    # 功能调用后也主动上报最新状态
+                    if invoke_ok:
+                        try:
+                            rr = mb_client.read_holding_registers(reg_base, count=reg_count, slave=unit_id)
+                            if not rr.isError():
+                                regs = list(rr.registers)
+                                values = parse_values(regs, reg_map)
+                                store["registers"] = regs
+                                store["values"] = values
+                                store["last_change"] = now_s()
+                                save_json(DATA_PATH, store)
+                                publish_properties(values)
+                        except Exception as e:
+                            log.warning("功能调用后读取失败: %s", e)
 
                 elif action == "read_props":
                     _, msg_id, prop_list = job
