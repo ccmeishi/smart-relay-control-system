@@ -1,0 +1,4 @@
+# Day2 依赖 (与 Day1 相同)
+# 安装: pip install -r requirements.txt
+pymodbus==3.6.9
+paho-mqtt==1.6.1

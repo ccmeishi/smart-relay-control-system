@@ -1,0 +1,35 @@
+{
+  "modbus": {
+    "host": "192.168.20.59",
+    "port": 5502,
+    "unit_id": 1,
+    "register_start": 2,
+    "register_count": 6,
+    "poll_interval": 3
+  },
+  "mqtt": {
+    "host": "172.16.4.211",
+    "port": 9783,
+    "username": "test",
+    "password": "123456",
+    "client_id": "relaycc-jl"
+  },
+  "jetlinks": {
+    "product_id": "relay-cc",
+    "device_id": "relaycc"
+  },
+  "register_map": {
+    "0": { "name": "relay1", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器1 0=关 1=开" },
+    "1": { "name": "relay2", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器2 0=关 1=开" },
+    "2": { "name": "relay3", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器3 0=关 1=开" },
+    "3": { "name": "relay4", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器4 0=关 1=开" },
+    "4": { "name": "current", "scale": 0.1, "signed": false, "unit": "A", "desc": "总电流" },
+    "5": { "name": "voltage", "scale": 0.1, "signed": false, "unit": "V", "desc": "电源电压" }
+  },
+  "relay_order": [
+    { "name": "relay1", "register": 2 },
+    { "name": "relay2", "register": 3 },
+    { "name": "relay3", "register": 4 },
+    { "name": "relay4", "register": 5 }
+  ]
+}

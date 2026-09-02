@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 运行时生成的数据文件
+sensor_data.json
+relay_data.json
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.vs/
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 依赖
+.env

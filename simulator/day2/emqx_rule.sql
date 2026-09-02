@@ -1,0 +1,46 @@
+-- ============================================================
+-- EMQX 规则引擎配置 (方式一: 非标准格式 → 标准格式转换)
+-- Day1 模拟器保持原始报文格式不变, EMQX 规则自动转成 JetLinks 标准格式
+-- EMQX 版本: v6.1.4  (不支持 json_extract / unix_timestamp / IS NOT NULL)
+-- ============================================================
+--
+-- 【规则 SQL】已验证通过
+-- 选择 EMQX 控制台 → 数据集成 → 规则 → 创建 → SQL 编辑器:
+SELECT * FROM "device/sensor/sevengroup"
+--
+-- 【动作配置】已验证通过
+-- 点"规则"tab → + 添加动作 → 消息重发布:
+--
+--   主题: /sensor-cc/sensorcc/properties/report
+--   QoS: 0
+--   Payload:
+--   {"timestamp": ${timestamp}, "messageId": "rule-${timestamp}", "properties": {"temperature": ${payload.temperature}, "humidity": ${payload.humidity}}}
+--
+-- 说明:
+--   ${timestamp}        = EMQX 内置变量(毫秒时间戳)
+--   ${payload.xxx}      = EMQX 动作模板从原始 JSON 提取字段
+--   (不需要 SQL 里 json_extract, 动作模板会自动处理)
+--
+-- 【测试数据】SQL 测试页填:
+--   主题:  device/sensor/sevengroup
+--   Payload: {"type":"data","temperature":55.5,"humidity":10.0,"deviceId":"sensor_cc","ts":"2026-09-02T11:00:00"}
+--
+-- 【启用后效果】
+--   Day1 模拟器发 → device/sensor/sevengroup (原始格式)
+--     EMQX 规则自动提取 temperature/humidity
+--     重发布 → /sensor-cc/sensorcc/properties/report (JetLinks 标准格式)
+--     JetLinks 网络组件接收 → 设备属性刷新
+--
+-- ============================================================
+-- 【关于下行】方式一本身只有上行转换, 如需双向:
+--   选项 A: 加一条反向规则, 解析 JetLinks write 命令转成 Day1 模拟器能懂的 cmd 格式
+--   选项 B: 改用方式二 (设备直连 JetLinks), 代码已实现完整双向通信
+--
+-- ============================================================
+-- 【JetLinks 网络组件配置参考】
+--   JetLinks → 产品 sensor-cc → 设备接入 tab
+--   接入方式: MQTT 接入
+--   协议: mqtt
+--   连接: mqtt://172.16.4.211:9783
+--   (JetLinks 作为 MQTT 客户端订阅 EMQX, 不是 JetLinks 自己开 Broker)
+-- ============================================================

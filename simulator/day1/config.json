@@ -1,0 +1,23 @@
+{
+  "modbus": {
+    "host": "192.168.20.59",
+    "port": 5502,
+    "unit_id": 1,
+    "register_start": 0,
+    "register_count": 10,
+    "poll_interval": 5
+  },
+  "mqtt": {
+    "host": "172.16.4.211",
+    "port": 9783,
+    "username": "test",
+    "password": "123456",
+    "client_id": "sensor_sevengroup",
+    "topic_data": "device/sensor/sevengroup",
+    "topic_cmd": "device/sensor/sevengroup/cmd"
+  },
+  "register_map": {
+    "0": { "name": "temperature", "scale": 0.1, "signed": true, "unit": "C" },
+    "1": { "name": "humidity", "scale": 0.1, "signed": false, "unit": "%RH" }
+  }
+}
