@@ -109,7 +109,7 @@ def publish_properties(properties):
     }
     text = json.dumps(payload, ensure_ascii=False)
     try:
-        info = mqtt_client.publish(TOPIC_REPORT, text, qos=1, retain=True)
+        info = mqtt_client.publish(TOPIC_REPORT, text, qos=1, retain=False)
         if info.rc == mqtt.MQTT_ERR_SUCCESS:
             parts = ["上报属性"]
             for k, v in properties.items():
@@ -180,6 +180,8 @@ def on_connect(client, _userdata, _flags, rc):
         log.error("MQTT 连接失败 rc=%s", rc)
         return
     log.info("MQTT 已连接 (EMQX -> JetLinks网络组件)")
+    # 清除 EMQX 上残留的旧 retained 消息 (空 payload + retain=True = 删除)
+    client.publish(TOPIC_REPORT, "", qos=1, retain=True)
     client.subscribe(TOPIC_WRITE, qos=1)
     client.subscribe(TOPIC_READ, qos=1)
     client.subscribe(TOPIC_INVOKE, qos=1)
