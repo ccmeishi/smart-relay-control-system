@@ -1,0 +1,10 @@
+[
+ {
+  "topic": "/relay-cc/relaycc/properties/report",
+  "payload": "{\"timestamp\": 1788342952246, \"messageId\": \"ff73a3bf-f91e-44\", \"properties\": {\"relay1\": 1, \"relay2\": 56840, \"relay3\": 55573, \"relay4\": 1, \"current\": 6.9, \"voltage\": 8.0}}"
+ },
+ {
+  "topic": "/sensor-cc/sensorcc/properties/report",
+  "payload": "{\"timestamp\": 1788320460057, \"messageId\": \"ade3475b-e88b-41\", \"properties\": {\"temperature\": 25.0, \"humidity\": 88.0}}"
+ }
+]

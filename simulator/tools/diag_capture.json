@@ -1,0 +1,22 @@
+[
+ {
+  "topic": "/relay-cc/relaycc/properties/report",
+  "payload": "{\"timestamp\": 1788396942056, \"messageId\": \"846d29d8-0623-4e\", \"properties\": {\"relay1\": 1, \"relay2\": 54793, \"relay3\": 38676, \"relay4\": 1, \"current\": 6.9, \"voltage\": 8.0}}"
+ },
+ {
+  "topic": "/sensor-cc/sensorcc/properties/report",
+  "payload": "{\"timestamp\": 1788320460057, \"messageId\": \"ade3475b-e88b-41\", \"properties\": {\"temperature\": 25.0, \"humidity\": 88.0}}"
+ },
+ {
+  "topic": "/relay-cc/relaycc/properties/report",
+  "payload": "{\"timestamp\": 1788398348375, \"messageId\": \"a0b6cef2-5350-42\", \"properties\": {\"relay1\": 1, \"relay2\": 54793, \"relay3\": 38676, \"relay4\": 1, \"current\": 6.9, \"voltage\": 8.0}}"
+ },
+ {
+  "topic": "/relay-cc/relaycc/properties/report",
+  "payload": "{\"timestamp\": 1788398353649, \"messageId\": \"cce9e4ba-6016-40\", \"properties\": {\"relay1\": 1, \"relay2\": 54793, \"relay3\": 38676, \"relay4\": 1, \"current\": 6.9, \"voltage\": 8.0}}"
+ },
+ {
+  "topic": "/relay-cc/relaycc/properties/report",
+  "payload": "{\"timestamp\": 1788398359771, \"messageId\": \"a762a675-42f6-40\", \"properties\": {\"relay1\": 1, \"relay2\": 54793, \"relay3\": 38676, \"relay4\": 1, \"current\": 6.9, \"voltage\": 8.0}}"
+ }
+]

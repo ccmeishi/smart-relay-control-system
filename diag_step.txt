@@ -1,0 +1,16 @@
+[17:42:13] step1: 开始, import paho 成功
+[17:42:13] step2: client 创建
+[17:42:13] step3: connect 完成
+[17:42:13] step4: subscribe 完成
+[17:42:13] msg: /relay-cc/relaycc/properties/report
+[17:42:16] step5: 监听 3 秒结束, 收到 1 条
+[17:42:16]   /relay-cc/relaycc/properties/report  {"timestamp": 1788341673482, "messageId": "d2b8df44-09b9-41", "properties": {"relay1": 1, "relay2": 
+[17:50:40] === 对比实验开始 ===
+[17:54:08] === 对比实验 v2 开始 ===
+[17:54:08] connect 完成
+[17:54:09] publish 带斜杠 topic 已调用 rc=0
+[17:54:09] publish 不带斜杠 topic 已调用 rc=0
+[17:54:12] 监听结束, 收到 3 条:
+[17:54:12]   /sensor-cc/sensorcc/properties/report  {"timestamp": 1788320460057, "messageId": "ade3475b-e88b-41", "properties": {"te
+[17:54:12]   /sensor-cc/sensorcc/properties/report  {"timestamp": 1788342849367, "messageId": "diag-slash", "properties": {"temperat
+[17:54:12]   sensor-cc/sensorcc/properties/report  {"timestamp": 1788342849438, "messageId": "diag-noslash", "properties": {"temper
