@@ -1,14 +1,14 @@
 @echo off
-title 温湿度传感器模拟器 - JetLinks直连
+chcp 65001 >nul 2>&1
+title Sensor Simulator - JetLinks
 echo ========================================
-echo   温湿度传感器模拟器
-echo   JetLinks 直连 (方式二)
-echo   产品: sensor-cc  设备: sensorcc
-echo   Ctrl+C 退出
+echo   Temp/Humidity Sensor Simulator
+echo   JetLinks Direct Connect
+echo   Product: sensor-cc  Device: sensorcc
+echo   Ctrl+C to exit
 echo ========================================
 echo.
 cd /d "%~dp0"
-if exist sensor_data.json del sensor_data.json
-echo 已清理 sensor_data.json 缓存
+if exist sensor_data.json del /q sensor_data.json
 python sensor_simulator_jl.py
 pause
