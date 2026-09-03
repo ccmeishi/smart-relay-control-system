@@ -1,10 +1,10 @@
 {
   "modbus": {
-    "host": "192.168.20.59",
+    "host": "127.0.0.1",
     "port": 5502,
-    "unit_id": 1,
+    "unit_id": 7,
     "register_start": 2,
-    "register_count": 6,
+    "register_count": 10,
     "poll_interval": 3
   },
   "mqtt": {
@@ -23,13 +23,21 @@
     "1": { "name": "relay2", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器2 0=关 1=开" },
     "2": { "name": "relay3", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器3 0=关 1=开" },
     "3": { "name": "relay4", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器4 0=关 1=开" },
-    "4": { "name": "current", "scale": 0.1, "signed": false, "unit": "A", "desc": "总电流" },
-    "5": { "name": "voltage", "scale": 0.1, "signed": false, "unit": "V", "desc": "电源电压" }
+    "4": { "name": "relay5", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器5 0=关 1=开" },
+    "5": { "name": "relay6", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器6 0=关 1=开" },
+    "6": { "name": "relay7", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器7 0=关 1=开" },
+    "7": { "name": "relay8", "scale": 1, "signed": false, "unit": "开关", "desc": "继电器8 0=关 1=开" },
+    "8": { "name": "current", "scale": 0.1, "signed": false, "unit": "A", "desc": "总电流" },
+    "9": { "name": "voltage", "scale": 0.1, "signed": false, "unit": "V", "desc": "电源电压" }
   },
   "relay_order": [
     { "name": "relay1", "register": 2 },
     { "name": "relay2", "register": 3 },
     { "name": "relay3", "register": 4 },
-    { "name": "relay4", "register": 5 }
+    { "name": "relay4", "register": 5 },
+    { "name": "relay5", "register": 6 },
+    { "name": "relay6", "register": 7 },
+    { "name": "relay7", "register": 8 },
+    { "name": "relay8", "register": 9 }
   ]
 }

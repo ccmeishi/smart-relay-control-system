@@ -86,7 +86,11 @@ def parse_values(regs, rm):
         if i >= len(regs):
             continue
         raw = to_signed(regs[i]) if spec.get("signed") else regs[i]
-        values[spec["name"]] = round(raw * spec.get("scale", 1), 2)
+        val = round(raw * spec.get("scale", 1), 2)
+        # 继电器开关量钳位: 强制转为 0/1, 防止从站返回脏值导致 JetLinks 拒收
+        if spec["name"].startswith("relay"):
+            val = 1 if val else 0
+        values[spec["name"]] = val
     return values
 
 
@@ -106,7 +110,7 @@ def publish_properties(properties):
     }
     text = json.dumps(payload, ensure_ascii=False)
     try:
-        info = mqtt_client.publish(TOPIC_REPORT, text, qos=1, retain=True)
+        info = mqtt_client.publish(TOPIC_REPORT, text, qos=1, retain=False)
         if info.rc == mqtt.MQTT_ERR_SUCCESS:
             parts = ["上报属性"]
             for k, v in properties.items():
@@ -187,6 +191,8 @@ def on_connect(client, _userdata, _flags, rc):
         log.error("MQTT 连接失败 rc=%s", rc)
         return
     log.info("MQTT 已连接")
+    # 清除 EMQX 上残留的旧 retained 消息 (空 payload + retain=True = 删除)
+    client.publish(TOPIC_REPORT, "", qos=1, retain=True)
     client.subscribe(TOPIC_WRITE, qos=1)
     client.subscribe(TOPIC_READ, qos=1)
     client.subscribe(TOPIC_INVOKE, qos=1)
@@ -293,6 +299,9 @@ def main():
     poll_s = float(mb_cfg.get("poll_interval", 3))
 
     store = load_json(DATA_PATH, {"registers": None, "values": None, "last_change": None})
+    # 启动时清空缓存, 防止旧从站的残留数据先上报导致 JetLinks 闪跳
+    store["registers"] = None
+    store["values"] = None
 
     log.info("继电器模拟器启动 | Modbus %s:%s 寄存器 0x%04X~0x%04X 每%gs | EMQX %s:%s | 产品 %s 设备 %s",
              mb_cfg["host"], mb_cfg["port"], reg_base, reg_base + reg_count - 1, poll_s,

@@ -1,27 +1,25 @@
 """Modbus TCP 从站模拟器(联调测试用)
 
-作用: 在没有实验室从站(192.168.20.59:5502)的环境里, 本机模拟一台多功能从站,
-同时支持温湿度采集和继电器控制两种场景。
+作用: 在没有实验室从站的环境里, 本机模拟一台 8 通道继电器从站.
+  - 支持 8 路继电器 (reg2~reg9)
+  - 电流自动联动 (每开一路 +0.5A)
+  - 电压微小波动 (218V~222V)
+  - slave ID 可通过命令行参数指定 (默认 9)
 
-模拟内容:
-  保持寄存器 0x0000~0x0009 (unit_id=1)
-    reg0 = 温度 x10(有符号)   起始 253 => 25.3 C
-    reg1 = 湿度 x10(无符号)   起始 567 => 56.7 %RH
-    reg2 = 继电器1 (0=关/1=开)  起始 0
-    reg3 = 继电器2 (0=关/1=开)  起始 0
-    reg4 = 继电器3 (0=关/1=开)  起始 0
-    reg5 = 继电器4 (0=关/1=开)  起始 0
-    reg6 = 总电流 x10(A)       起始 0.0A (随继电器开关数量变化)
-    reg7 = 电源电压 x10(V)     起始 220.0V
-    reg8~reg9 = 预留
-  每 2 秒温湿度随机漂移, 电压微小波动
-  继电器开关时电流自动变化 (每开一个继电器 +0.5A)
+寄存器布局 (unit_id 可配置):
+  reg0  = 温度 x10 (起始 253 => 25.3 C)
+  reg1  = 湿度 x10 (起始 567 => 56.7 %RH)
+  reg2~reg9 = 继电器1~8 (0=关/1=开)
+  reg10 = 总电流 x10(A)  (每开一路 +0.5A)
+  reg11 = 电源电压 x10(V) (218~222V 波动)
+  reg12~reg15 = 预留
 
 支持功能码: 0x03 读保持寄存器 / 0x06 写单个寄存器
 
 用法:
-  python modbus_slave_sim.py          # 监听 0.0.0.0:5502
-  python modbus_slave_sim.py 5503     # 指定端口
+  python modbus_slave_sim.py                  # 默认 unit_id=9, 端口 5502
+  python modbus_slave_sim.py 5503             # 指定端口
+  python modbus_slave_sim.py 5502 9           # 指定端口和 unit_id
 """
 
 import random
@@ -32,18 +30,18 @@ import threading
 import time
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5502
-UNIT_ID = 1
-# 寄存器布局 (共 10 个保持寄存器)
-# [温度x10, 湿度x10, relay1, relay2, relay3, relay4, 电流x10, 电压x10, 预留, 预留]
-REGS = [253, 567, 0, 0, 0, 0, 0, 2200, 0, 0]
+UNIT_ID = int(sys.argv[2]) if len(sys.argv) > 2 else 7
+
+# 寄存器布局 (共 16 个保持寄存器)
+REGS = [253, 567, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2200, 0, 0, 0, 0]
 LOCK = threading.Lock()
-RELAY_REGS = [2, 3, 4, 5]   # 4 路继电器对应寄存器偏移
-CURRENT_REG = 6
-VOLTAGE_REG = 7
+RELAY_REGS = [2, 3, 4, 5, 6, 7, 8, 9]   # 8 路继电器对应寄存器偏移
+CURRENT_REG = 10
+VOLTAGE_REG = 11
+RELAY_COUNT = 8
 
 
 def relay_state(regs, offset):
-    """获取继电器文本状态"""
     return "开 ⚡" if regs[offset] else "关 ⚪"
 
 
@@ -138,10 +136,10 @@ def main():
         print(f"寄存器布局:")
         print(f"  reg0  温度  (x10, 起始 {REGS[0]/10:.1f}°C)")
         print(f"  reg1  湿度  (x10, 起始 {REGS[1]/10:.1f}%RH)")
-        print(f"  reg2-5 继电器1-4 (0=关/1=开)")
-        print(f"  reg6  总电流 (x10, {REGS[CURRENT_REG]/10:.1f}A)")
-        print(f"  reg7  电压   (x10, {REGS[VOLTAGE_REG]/10:.1f}V, 218~222V波动)")
-        print(f"  reg8-9 预留")
+        print(f"  reg2-9 继电器1-8 (0=关/1=开)  共 {RELAY_COUNT} 路")
+        print(f"  reg10 总电流 (x10, {REGS[CURRENT_REG]/10:.1f}A, 每开一路 +0.5A)")
+        print(f"  reg11 电压  (x10, {REGS[VOLTAGE_REG]/10:.1f}V, 218~222V波动)")
+        print(f"  reg12-15 预留")
         print("Ctrl+C 退出\n")
         try:
             srv.serve_forever()
