@@ -267,7 +267,49 @@ def modbus_close():
         mb_client = None
 
 
-# ==================== 主循环 ====================
+def set_relay_by_name(name, value):
+    """辅助函数: 按名称写继电器寄存器, 返回 (是否成功, 寄存器地址)"""
+    relay_value = 1 if value else 0
+    for reg_offset, spec in reg_map.items():
+        if spec["name"] == name and name.startswith("relay"):
+            reg_addr = reg_base + int(reg_offset)
+            if mb_client is None:
+                return False, None
+            try:
+                rr = mb_client.write_register(reg_addr, relay_value, slave=unit_id)
+                if not rr.isError():
+                    return True, reg_addr
+            except Exception as e:
+                log.warning("写 %s 失败: %s", name, e)
+                modbus_close()
+            return False, reg_addr
+    return False, None
+
+
+def read_all_relays():
+    """辅助函数: 读取所有寄存器并解析"""
+    if mb_client is None:
+        return None
+    try:
+        rr = mb_client.read_holding_registers(reg_base, count=reg_count, slave=unit_id)
+        if rr.isError():
+            return None
+        regs = list(rr.registers)
+        values = parse_values(regs, reg_map)
+        return values
+    except Exception:
+        return None
+
+
+def reconnect_if_needed(now_var, last_retry_var):
+    """辅助函数: Modbus 断线重连"""
+    if mb_client is None and now_var - last_retry_var >= RECONNECT_S:
+        last_retry_var[0] = now_var
+        modbus_connect()
+    return mb_client is not None
+
+
+# ==================== MQTT 主循环 ====================
 
 def main():
     global mqtt_client, mb_client, reg_base, reg_count, unit_id
@@ -390,55 +432,130 @@ def main():
 
                 elif action == "invoke_func":
                     _, msg_id, func_id, params = job
+                    # JetLinks 功能调用 inputs 可能是数组格式: [{'name':'relay','value':2}, ...]
+                    # 也可能是字典格式: {'relay': 2, 'state': 1}
+                    if isinstance(params, list):
+                        params = {item["name"]: item["value"] for item in params if "name" in item and "value" in item}
                     log.info("处理功能调用: %s  参数: %s", func_id, params)
                     invoke_results = {}
                     invoke_ok = False
-                    # 功能调用里的参数也是属性名=值, 处理方式同 write
-                    for prop_name, prop_value in params.items():
-                        for reg_offset, spec in reg_map.items():
-                            if spec["name"] == prop_name:
-                                reg_addr = reg_base + int(reg_offset)
-                                if isinstance(prop_value, bool):
-                                    reg_value = 1 if prop_value else 0
-                                    prop_value = reg_value
-                                elif isinstance(prop_value, str):
-                                    reg_value = 1 if prop_value.lower() in ("1", "on", "open", "true") else 0
-                                    prop_value = reg_value
-                                else:
-                                    reg_value = int(prop_value) if int(prop_value) in (0, 1) else 0
-                                    prop_value = reg_value
-                                if mb_client is None and now - last_retry >= RECONNECT_S:
-                                    last_retry = now
-                                    modbus_connect()
-                                if mb_client is None:
-                                    log.warning("Modbus 未连接, 无法执行功能调用")
-                                    break
-                                try:
-                                    rr = mb_client.write_register(reg_addr, reg_value, slave=unit_id)
-                                    if not rr.isError():
-                                        invoke_results[prop_name] = prop_value
+
+                    # ---- 功能: 全部打开 ----
+                    if func_id == "all_on":
+                        if reconnect_if_needed(now, [last_retry]):
+                            for reg_offset, spec in reg_map.items():
+                                name = spec["name"]
+                                if name.startswith("relay"):
+                                    ok, _ = set_relay_by_name(name, True)
+                                    if ok:
+                                        invoke_results[name] = 1
+                            invoke_ok = len(invoke_results) > 0
+                            log.info("功能调用 all_on: 打开 %d 路 ✅", len(invoke_results))
+
+                    # ---- 功能: 全部关闭 ----
+                    elif func_id == "all_off":
+                        if reconnect_if_needed(now, [last_retry]):
+                            for reg_offset, spec in reg_map.items():
+                                name = spec["name"]
+                                if name.startswith("relay"):
+                                    ok, _ = set_relay_by_name(name, False)
+                                    if ok:
+                                        invoke_results[name] = 0
+                            invoke_ok = len(invoke_results) > 0
+                            log.info("功能调用 all_off: 关闭 %d 路 ✅", len(invoke_results))
+
+                    # ---- 功能: 设置单个继电器 ----
+                    elif func_id == "set_relay":
+                        relay_num = params.get("relay") or params.get("channel")
+                        state = params.get("state", params.get("value", params.get("status", 1)))
+                        try:
+                            relay_idx = int(relay_num)
+                            relay_name = f"relay{relay_idx}"
+                            on = bool(int(state))
+                        except (ValueError, TypeError):
+                            log.warning("set_relay 参数无效: relay=%s state=%s", relay_num, state)
+                        else:
+                            if reconnect_if_needed(now, [last_retry]):
+                                ok, reg_addr = set_relay_by_name(relay_name, on)
+                                if ok:
+                                    invoke_results[relay_name] = 1 if on else 0
+                                    invoke_ok = True
+                                    log.info("功能调用 set_relay: %s → %s  ✅", relay_name, "开" if on else "关")
+                                elif reg_addr is not None:
+                                    log.warning("set_relay: 未找到 %s", relay_name)
+
+                    # ---- 功能: 切换指定继电器 ----
+                    elif func_id == "toggle":
+                        relay_num = params.get("relay", 1)
+                        try:
+                            relay_idx = int(relay_num)
+                            relay_name = f"relay{relay_idx}"
+                        except (ValueError, TypeError):
+                            log.warning("toggle 参数 relay 无效: %s", relay_num)
+                        else:
+                            if reconnect_if_needed(now, [last_retry]):
+                                values = read_all_relays()
+                                if values and relay_name in values:
+                                    old_val = values[relay_name]
+                                    new_val = 0 if old_val else 1
+                                    ok, _ = set_relay_by_name(relay_name, new_val)
+                                    if ok:
+                                        invoke_results[relay_name] = new_val
                                         invoke_ok = True
-                                        log.info("功能调用 %s: %s=%s  (寄存器0x%04X=%s)",
-                                                 func_id, prop_name, prop_value, reg_addr, reg_value)
-                                except Exception as e:
-                                    log.warning("功能调用 Modbus 写异常: %s", e)
-                                    modbus_close()
-                                break
+                                        log.info("功能调用 toggle: %s %d→%d ✅", relay_name, old_val, new_val)
+
+                    # ---- 功能: 批量设置 ----
+                    elif func_id == "set_batch":
+                        relays_str = params.get("relays", "")  # 如 "1,3,5-8"
+                        state = params.get("state", 1)
+                        on = bool(int(state))
+                        relay_nums = []
+                        for part in str(relays_str).split(","):
+                            part = part.strip()
+                            if "-" in part:
+                                lo, hi = part.split("-", 1)
+                                relay_nums.extend(range(int(lo), int(hi) + 1))
+                            elif part:
+                                relay_nums.append(int(part))
+                        if reconnect_if_needed(now, [last_retry]):
+                            for n in relay_nums:
+                                relay_name = f"relay{n}"
+                                ok, _ = set_relay_by_name(relay_name, on)
+                                if ok:
+                                    invoke_results[relay_name] = 1 if on else 0
+                            invoke_ok = len(invoke_results) > 0
+                            log.info("功能调用 set_batch: %s → %s  成功 %d 路 ✅",
+                                     relays_str, "开" if on else "关", len(invoke_results))
+
+                    # ---- 功能: 查询状态 ----
+                    elif func_id == "get_status":
+                        values = read_all_relays()
+                        if values:
+                            invoke_results = {k: v for k, v in values.items() if k.startswith("relay")}
+                            invoke_ok = True
+                            log.info("功能调用 get_status: %s ✅", invoke_results)
+
+                    # ---- 通用功能: 参数是属性名=值 (兼容旧逻辑) ----
+                    else:
+                        for prop_name, prop_value in params.items():
+                            if prop_name.startswith("relay"):
+                                on = bool(int(prop_value))
+                                ok, _ = set_relay_by_name(prop_name, on)
+                                if ok:
+                                    invoke_results[prop_name] = 1 if on else 0
+                                    invoke_ok = True
+                                    log.info("功能调用 %s: %s=%s ✅", func_id, prop_name, invoke_results[prop_name])
+
                     publish_invoke_reply(msg_id, invoke_ok, invoke_results)
                     # 功能调用后也主动上报最新状态
                     if invoke_ok:
-                        try:
-                            rr = mb_client.read_holding_registers(reg_base, count=reg_count, slave=unit_id)
-                            if not rr.isError():
-                                regs = list(rr.registers)
-                                values = parse_values(regs, reg_map)
-                                store["registers"] = regs
-                                store["values"] = values
-                                store["last_change"] = now_s()
-                                save_json(DATA_PATH, store)
-                                publish_properties(values)
-                        except Exception as e:
-                            log.warning("功能调用后读取失败: %s", e)
+                        values = read_all_relays()
+                        if values:
+                            store["values"] = values
+                            store["registers"] = None
+                            store["last_change"] = now_s()
+                            save_json(DATA_PATH, store)
+                            publish_properties(values)
 
                 elif action == "read_props":
                     _, msg_id, prop_list = job

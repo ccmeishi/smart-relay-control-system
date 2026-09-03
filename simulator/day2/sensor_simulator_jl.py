@@ -48,6 +48,8 @@ TOPIC_WRITE = ""      # /{productId}/{deviceId}/properties/write
 TOPIC_WRITE_REPLY = "" # /{productId}/{deviceId}/properties/write/reply
 TOPIC_READ = ""       # /{productId}/{deviceId}/properties/read
 TOPIC_READ_REPLY = "" # /{productId}/{deviceId}/properties/read/reply
+TOPIC_INVOKE = ""     # /{productId}/{deviceId}/function/invoke
+TOPIC_INVOKE_REPLY = "" # /{productId}/{deviceId}/function/invoke/reply
 
 
 def load_json(path, default):
@@ -153,6 +155,24 @@ def publish_read_reply(message_id, properties, success=True):
         log.warning("回复异常: %s", e)
 
 
+def publish_invoke_reply(message_id, success=True, properties=None):
+    if not TOPIC_INVOKE_REPLY:
+        return
+    payload = {
+        "timestamp": now_ms(),
+        "messageId": message_id,
+        "success": success,
+    }
+    if properties:
+        payload["properties"] = properties
+    text = json.dumps(payload, ensure_ascii=False)
+    try:
+        mqtt_client.publish(TOPIC_INVOKE_REPLY, text, qos=1)
+        log.info("回复 invoke/reply  success=%s", success)
+    except (OSError, RuntimeError) as e:
+        log.warning("回复异常: %s", e)
+
+
 # ==================== MQTT 回调 ====================
 
 def on_connect(client, _userdata, _flags, rc):
@@ -162,6 +182,7 @@ def on_connect(client, _userdata, _flags, rc):
     log.info("MQTT 已连接 (EMQX -> JetLinks网络组件)")
     client.subscribe(TOPIC_WRITE, qos=1)
     client.subscribe(TOPIC_READ, qos=1)
+    client.subscribe(TOPIC_INVOKE, qos=1)
     wq.put(("report_all",))
 
 
@@ -187,6 +208,12 @@ def on_message(_client, _userdata, msg):
 
     elif topic == TOPIC_READ:
         wq.put(("read_props", message_id, cmd.get("properties", [])))
+
+    elif topic == TOPIC_INVOKE:
+        func_id = cmd.get("functionId", "")
+        params = cmd.get("inputs", cmd.get("properties", {}))
+        log.info("收到 JetLinks 功能调用: functionId=%s inputs=%s", func_id, params)
+        wq.put(("invoke_func", message_id, func_id, params))
 
     else:
         log.info("收到未知 topic 消息: %s", topic)
@@ -221,6 +248,7 @@ def main():
     global mqtt_client, mb_client, reg_base, reg_count, unit_id
     global mb_cfg, mq_cfg, reg_map, store
     global TOPIC_REPORT, TOPIC_WRITE, TOPIC_WRITE_REPLY, TOPIC_READ, TOPIC_READ_REPLY
+    global TOPIC_INVOKE, TOPIC_INVOKE_REPLY
 
     cfg = load_json(CONFIG_PATH, {})
     mb_cfg = cfg.get("modbus", {})
@@ -236,6 +264,8 @@ def main():
     TOPIC_WRITE_REPLY = f"/{product_id}/{device_id}/properties/write/reply"
     TOPIC_READ = f"/{product_id}/{device_id}/properties/read"
     TOPIC_READ_REPLY = f"/{product_id}/{device_id}/properties/read/reply"
+    TOPIC_INVOKE = f"/{product_id}/{device_id}/function/invoke"
+    TOPIC_INVOKE_REPLY = f"/{product_id}/{device_id}/function/invoke/reply"
 
     reg_base = int(mb_cfg.get("register_start", 0))
     reg_count = int(mb_cfg.get("register_count", 10))
@@ -320,6 +350,129 @@ def main():
                             publish_read_reply(msg_id, store["values"], True)
                     else:
                         publish_read_reply(msg_id, {}, False)
+
+                elif action == "invoke_func":
+                    _, msg_id, func_id, params = job
+                    # JetLinks 功能调用 inputs 可能是数组格式
+                    if isinstance(params, list):
+                        params = {item["name"]: item["value"] for item in params if "name" in item and "value" in item}
+                    log.info("温湿度功能调用: %s  参数: %s", func_id, params)
+                    invoke_results = {}
+                    invoke_ok = False
+
+                    # ---- 功能: 设置温度 ----
+                    if func_id == "set_temperature":
+                        temp_val = params.get("value") or params.get("temperature")
+                        try:
+                            reg_value = int(float(temp_val) * 10)
+                        except (ValueError, TypeError):
+                            log.warning("set_temperature 参数无效: %s", temp_val)
+                        else:
+                            if mb_client is None and now - last_retry >= RECONNECT_S:
+                                last_retry = now
+                                modbus_connect()
+                            if mb_client:
+                                try:
+                                    rr = mb_client.write_register(reg_base + 0, reg_value, slave=unit_id)
+                                    if not rr.isError():
+                                        invoke_results["temperature"] = round(reg_value / 10, 2)
+                                        invoke_ok = True
+                                        log.info("功能调用 set_temperature: %.1f°C ✅", reg_value / 10)
+                                except Exception as e:
+                                    log.warning("Modbus 写温度异常: %s", e)
+                                    modbus_close()
+
+                    # ---- 功能: 设置湿度 ----
+                    elif func_id == "set_humidity":
+                        hum_val = params.get("value") or params.get("humidity")
+                        try:
+                            reg_value = int(float(hum_val) * 10)
+                        except (ValueError, TypeError):
+                            log.warning("set_humidity 参数无效: %s", hum_val)
+                        else:
+                            if mb_client is None and now - last_retry >= RECONNECT_S:
+                                last_retry = now
+                                modbus_connect()
+                            if mb_client:
+                                try:
+                                    rr = mb_client.write_register(reg_base + 1, reg_value, slave=unit_id)
+                                    if not rr.isError():
+                                        invoke_results["humidity"] = round(reg_value / 10, 2)
+                                        invoke_ok = True
+                                        log.info("功能调用 set_humidity: %.1f%% ✅", reg_value / 10)
+                                except Exception as e:
+                                    log.warning("Modbus 写湿度异常: %s", e)
+                                    modbus_close()
+
+                    # ---- 功能: 设置温湿度 ----
+                    elif func_id == "set_both":
+                        temp_val = params.get("temperature")
+                        hum_val = params.get("humidity")
+                        if mb_client is None and now - last_retry >= RECONNECT_S:
+                            last_retry = now
+                            modbus_connect()
+                        if mb_client:
+                            if temp_val is not None:
+                                try:
+                                    rr = mb_client.write_register(reg_base + 0, int(float(temp_val) * 10), slave=unit_id)
+                                    if not rr.isError():
+                                        invoke_results["temperature"] = float(temp_val)
+                                except Exception:
+                                    pass
+                            if hum_val is not None:
+                                try:
+                                    rr = mb_client.write_register(reg_base + 1, int(float(hum_val) * 10), slave=unit_id)
+                                    if not rr.isError():
+                                        invoke_results["humidity"] = float(hum_val)
+                                except Exception:
+                                    pass
+                            invoke_ok = len(invoke_results) > 0
+                            log.info("功能调用 set_both: %s ✅", invoke_results)
+
+                    # ---- 功能: 查询状态 ----
+                    elif func_id == "get_status":
+                        if store.get("values"):
+                            invoke_results = dict(store["values"])
+                            invoke_ok = True
+                            log.info("功能调用 get_status: %s ✅", invoke_results)
+
+                    # ---- 通用功能: 属性名=值 ----
+                    else:
+                        for prop_name, prop_value in params.items():
+                            for reg_offset, spec in reg_map.items():
+                                if spec["name"] == prop_name:
+                                    reg_addr = reg_base + int(reg_offset)
+                                    reg_value = int(float(prop_value) / spec.get("scale", 1))
+                                    if mb_client is None and now - last_retry >= RECONNECT_S:
+                                        last_retry = now
+                                        modbus_connect()
+                                    if mb_client:
+                                        try:
+                                            rr = mb_client.write_register(reg_addr, reg_value, slave=unit_id)
+                                            if not rr.isError():
+                                                invoke_results[prop_name] = prop_value
+                                                invoke_ok = True
+                                                log.info("功能调用 %s: %s=%s ✅", func_id, prop_name, prop_value)
+                                        except Exception as e:
+                                            log.warning("Modbus 写异常: %s", e)
+                                            modbus_close()
+                                    break
+
+                    publish_invoke_reply(msg_id, invoke_ok, invoke_results)
+                    # 功能调用后主动上报
+                    if invoke_ok:
+                        try:
+                            rr = mb_client.read_holding_registers(reg_base, count=reg_count, slave=unit_id)
+                            if not rr.isError():
+                                regs = list(rr.registers)
+                                values = parse_values(regs, reg_map)
+                                store["registers"] = regs
+                                store["values"] = values
+                                store["last_change"] = now_s()
+                                save_json(DATA_PATH, store)
+                                publish_properties(values)
+                        except Exception as e:
+                            log.warning("功能调用后读取失败: %s", e)
 
             # 2) 周期采集 Modbus → 变化检测 → JetLinks 格式上报
             if now >= next_poll:
