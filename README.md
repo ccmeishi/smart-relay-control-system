@@ -2,15 +2,15 @@
 
 > 打通 **Modbus 设备采集 → MQTT Broker → JetLinks 云平台 → 双向远程控制** 全链路的物联网继电器管控方案。以 Python 模拟器为载体，完整实现了从物理寄存器读写、MQTT 消息发布订阅、EMQX 规则引擎格式转换，到 JetLinks 物模型上报与属性下发的端到端闭环。
 
-**当前进度：阶段 2 / 10（Day1 + Day2 已完成，Day3~Day10 持续迭代中）**
+**当前进度：阶段 3 / 10（Day1 + Day2 + Day3 已完成，Day4~Day10 持续迭代中）**
 
 | 阶段 | 内容 | 状态 |
 |---|---|---|
 | 0 · 环境准备 | Git 双远程、Python 环境、JetLinks + EMQX 部署 | ✅ |
 | 1 · Day1 | Modbus 采集 + MQTT 温湿度传感器模拟器（原始报文） | ✅ |
-| 2 · Day2 | JetLinks 两种接入方式 + 继电器远程控制全链路 | ✅ |
-| 3 · Day3 | 多通道继电器模拟器（8 路，上报/响应/重连） | 🔜 |
-| 4~10 | 固件、后端、前端、大屏、安全、联调、答辩 | 📋 |
+| 2 · Day2 | JetLinks 两种接入方式 + 8 路继电器全链路 + Web 控制台 | ✅ |
+| 3 · Day3 | 实物测试：ESP32 四路继电器板（MicroPython，MQTT 直连 + Modbus 从站双路线） | ✅ |
+| 4~10 | 后端、前端、大屏、安全、联调、答辩 | 📋 |
 
 ---
 
@@ -19,7 +19,8 @@
 - **两种设备接入方式对比落地**：同一台模拟器同时支持 EMQX 规则引擎转换（非标准→标准）与 JetLinks 官方 MQTT 协议直连，完整跑通两种链路并验证优劣
 - **继电器远程控制全链路打通**：JetLinks 控制台编辑属性 → MQTT write 命令下发 → Modbus 写寄存器 → 继电器状态变更 → 电流联动（每开一路 +0.5A）→ 设备自动上报，全链路无断点
 - **MQTT 可靠性机制完整实现**：Retain 消息保证新订阅者立即获取最新值、遗嘱消息（LWT）异常掉线通知、心跳保活、断线自动重连
-- **真实踩坑与问题解决**：JetLinks 物模型标识拼写必须与代码属性名完全一致、EMQX 6.1.4 版本不支持 `json_extract`/`unix_timestamp` 需用最简 SQL、paho-mqtt 回调跨线程操作 Modbus 需通过 queue 解耦
+- **PC 模拟器无缝切换实物**：ESP32 实物板的 Modbus 寄存器布局与实验室从站完全对齐，PC 端只需改 `config_relay.json` 两个参数（host/port）即可把"从站"从模拟器换成真实硬件；同一套 UI / 模拟器 / 平台配置零改动复用
+- **真实踩坑与问题解决**：JetLinks 物模型标识拼写必须与代码属性名完全一致、EMQX 6.1.4 版本不支持 `json_extract`/`unix_timestamp` 需用最简 SQL、paho-mqtt 回调跨线程操作 Modbus 需通过 queue 解耦、ESP32 继电器板触发电平需实测判断（高电平触发板上电全亮）
 
 ---
 
@@ -112,6 +113,33 @@ SELECT * FROM "device/sensor/sevengroup"
 }
 ```
 
+### Day3 · 实物测试（ESP32 四路继电器板）
+
+硬件：ESP32-C3 四路继电器开发板（MicroPython v1.29 固件），烧录与运行工具为 `esptool` + `mpremote`。
+
+```
+固件文件 (simulator/esp32/)：
+┌──────────────────┬──────────────────────────────────────────────┐
+│ boot.py          │ 上电自动连 WiFi (Office-WiFi)                 │
+│ config.py        │ WiFi/MQTT/GPIO/Modbus 全局配置                │
+│ relay_hw.py      │ GPIO 抽象层 (逻辑 0/1 ↔ 电平, 触发电平可配)    │
+│ main_mqtt.py     │ 路线A: MQTT 直连 EMQX, 按 JetLinks 协议上报    │
+│ main_modbus.py   │ 路线B: ESP32 作为 Modbus TCP 从站 (端口 502)   │
+│ umqtt/simple.py  │ MicroPython 官方 MQTT 库                      │
+└──────────────────┴──────────────────────────────────────────────┘
+```
+
+**路线 B 寄存器布局**（与实验室从站 unit_id=7 完全对齐，PC 端零改动切换）：
+
+```
+reg0 = 温度×10 (静态 253)   reg1 = 湿度×10 (静态 567)
+reg2~reg5 = 继电器1~4 (0/1, 双向联动 GPIO)
+reg6~reg9 = 占位 0 (对齐 PC 模拟器读 reg2~9 的习惯)
+支持功能码: 0x03 读保持寄存器 / 0x06 写单寄存器 / 0x10 写多寄存器
+```
+
+**两条路线的切换**：上传 `main_modbus.py` 为板子上的 `main.py` 即路线 B（PC 端 `config_relay.json` 指向 ESP32 的 IP:502）；换成 `main_mqtt.py` 即路线 A（板子直连 EMQX 按 JetLinks 协议上报 relay1~4，此时必须关闭 PC 端 `relay_simulator_jl.py`，避免同设备双上报导致平台会话错乱）。详细操作步骤见 [simulator/README.md](./simulator/README.md)。
+
 ---
 
 ## 🧱 技术栈
@@ -136,17 +164,29 @@ smart-relay-control-system/
 │   │   ├── config.json
 │   │   ├── bom.txt
 │   │   └── README.md
-│   ├── day2/                        # 阶段2: JetLinks 接入 + 继电器 ✅
+│   ├── day2/                        # 阶段2: JetLinks 接入 + 8路继电器 + Web控制台 ✅
 │   │   ├── sensor_simulator_jl.py    # 温湿度 JetLinks 直连版
-│   │   ├── relay_simulator_jl.py      # 继电器 JetLinks 直连版
+│   │   ├── relay_simulator_jl.py      # 继电器 JetLinks 直连版 (8路)
+│   │   ├── relay_ui.py                # 继电器 Web 控制台 (MQTT链路/直连Modbus 双模式)
 │   │   ├── config_relay.json          # 继电器配置 (product_id / register_map)
+│   │   ├── start_relay.bat / start_sensor.bat / start_ui.bat  # 一键启动脚本
 │   │   ├── emqx_rule.sql              # EMQX 规则引擎 SQL
 │   │   ├── test_format_compare.py     # 两种格式对比测试
 │   │   └── README.md
-│   ├── day3/...day10/               # 后续阶段待实现 🔜
+│   ├── esp32/                       # 阶段3: 实物测试 (ESP32-C3 四路继电器板) ✅
+│   │   ├── boot.py                    # 上电连 WiFi
+│   │   ├── config.py                  # WiFi/MQTT/GPIO/Modbus 配置
+│   │   ├── relay_hw.py                # GPIO 抽象层 (触发电平可配)
+│   │   ├── main_mqtt.py               # 路线A: MQTT 直连 EMQX (JetLinks 协议)
+│   │   ├── main_modbus.py             # 路线B: Modbus TCP 从站 (端口 502)
+│   │   ├── serial_monitor.py          # 串口日志工具
+│   │   └── umqtt/simple.py            # MicroPython 官方 MQTT 库
+│   ├── day4/...day10/               # 后续阶段待实现 🔜
 │   ├── tools/
-│   │   └── modbus_slave_sim.py        # 本地 Modbus TCP 从站模拟器
-│   └── README.md
+│   │   ├── modbus_slave_sim.py        # 本地 Modbus TCP 从站模拟器
+│   │   ├── modbus_scan.py             # 从站寄存器扫描工具
+│   │   └── diag_*.py                  # MQTT/平台链路诊断脚本
+│   └── README.md                    # ★ 各程序说明 + 完整操作步骤指南
 ├── docs/images/                      # 架构图
 ├── backend/ / frontend/ / firmware/  # 待补充
 ├── .gitignore
@@ -158,23 +198,28 @@ smart-relay-control-system/
 
 ## 🚀 快速上手
 
+> ★ **完整操作步骤（每个程序是什么、怎么启动、三种运行场景）见 [simulator/README.md](./simulator/README.md)**
+
 ```bash
 # 1. 安装依赖
-pip install pymodbus==3.6.9 paho-mqtt==1.6.1
+pip install -r simulator/day1/requirements.txt -r simulator/day2/requirements.txt
 
-# 2. 启动本地 Modbus 从站 (可选, 无真实设备时用)
+# 2. 启动本地 Modbus 从站 (可选, 无真实设备/实物时用)
 python simulator/tools/modbus_slave_sim.py
 
 # 3. 启动继电器模拟器 (Day2, JetLinks 直连)
 #    先确认 config_relay.json 里 broker / product_id / device_id 配置正确
 python simulator/day2/relay_simulator_jl.py
 
-# 4. 启动温湿度模拟器 (Day1, 原始报文)
-python simulator/day1/sensor_simulator.py
+# 4. 启动温湿度模拟器 (Day2, JetLinks 直连)
+python simulator/day2/sensor_simulator_jl.py
+
+# 5. 实物测试 (Day3): 烧录 ESP32 后, PC 端 config_relay.json 指向板子 IP:502
+#    详见 simulator/README.md 场景三
 ```
 
 JetLinks 侧需提前创建：
-- 产品 `relay-cc` + 设备 `relaycc` + 物模型（relay1~4 / current / voltage）
+- 产品 `relay-cc` + 设备 `relaycc` + 物模型（relay1~8 / current / voltage）
 - 产品 `sensor-cc` + 设备 `sensorcc` + 物模型（temperature / humidity）
 
 ---
