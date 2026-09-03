@@ -21,6 +21,7 @@
 import socket
 import ustruct
 import network
+import _thread
 import config as C
 import relay_hw
 
@@ -105,6 +106,21 @@ def handle(conn):
         conn.sendall(reply(tid, uid, ustruct.pack(">BB", 0x80 | fc, 0x01)))
 
 
+def client_worker(conn, addr):
+    """每个客户端一个线程, 互不阻塞 (UI直连/模拟器可同时在线)"""
+    log("客户端接入:", addr)
+    conn.settimeout(30)                  # 30s 无请求回收, 防僵死连接占坑
+    try:
+        while True:
+            handle(conn)
+    except Exception as e:
+        log("连接结束:", e)
+    try:
+        conn.close()
+    except Exception:
+        pass
+
+
 def run():
     wlan = network.WLAN(network.STA_IF)
     if not wlan.isconnected():
@@ -116,24 +132,14 @@ def run():
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("0.0.0.0", C.MODBUS_PORT))
-    s.listen(1)
+    s.listen(2)
     log("Modbus TCP 从站已启动 %s:%s  unit_id=%d" %
         (ip, C.MODBUS_PORT, C.MODBUS_UNIT_ID))
     log("PC 端 config_relay.json 改为: host=%s, port=%d" % (ip, C.MODBUS_PORT))
 
     while True:
         conn, addr = s.accept()
-        log("客户端接入:", addr)
-        conn.settimeout(120)
-        try:
-            while True:
-                handle(conn)
-        except Exception as e:
-            log("连接结束:", e)
-        try:
-            conn.close()
-        except Exception:
-            pass
+        _thread.start_new_thread(client_worker, (conn, addr))
 
 
 run()
