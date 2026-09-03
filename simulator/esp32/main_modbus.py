@@ -24,7 +24,7 @@ import network
 import config as C
 import relay_hw
 
-REGS = [253, 567, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+REGS = [253, 567, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]   # reg2~5 初始 1 对应上电全亮
 RELAY_ADDR = (2, 3, 4, 5)               # reg2~reg5 = 继电器1~4
 
 

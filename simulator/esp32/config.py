@@ -21,7 +21,7 @@ DEVICE_ID = "relaycc"
 
 # ---------- 继电器硬件 ----------
 RELAY_PINS = [3, 4, 5, 7]             # 卖家图: 四路继电器从左至右 IO3/IO4/IO5/IO7
-RELAY_ACTIVE_LOW = False              # 实测: UI开=亮/关=灭, 上电全亮说明是高电平触发
+RELAY_ACTIVE_LOW = False              # 实测: UI开=亮/关=灭, 本板为高电平触发
 
 # ---------- 路线B: Modbus TCP 从站 ----------
 MODBUS_PORT = 502

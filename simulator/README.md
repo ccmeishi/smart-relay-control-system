@@ -132,7 +132,23 @@ python -m mpremote reset
 
 ---
 
-## 三、配置速查
+## 三、MQTTX 手动控制指令
+
+MQTTX 新建连接：Host `172.16.4.211`，Port `9783`，协议选 **TCP**，用户名 `test` / 密码 `123456`，Client ID 随意（如 `mqttx-test`，不要与模拟器重复）。
+
+| 操作 | Topic | Payload |
+|---|---|---|
+| 继电器全开 | `/relay-cc/relaycc/function/invoke` | `{"messageId":"mqttx-all-on","functionId":"all_on","inputs":[]}` |
+| 继电器全关 | `/relay-cc/relaycc/function/invoke` | `{"messageId":"mqttx-all-off","functionId":"all_off","inputs":[]}` |
+| 单路控制（示例开 relay3） | `/relay-cc/relaycc/properties/write` | `{"messageId":"w3","properties":{"relay3":1}}` |
+| 温湿度设温湿度 | `/sensor-cc/sensorcc/function/invoke` | `{"messageId":"s1","functionId":"set_both","inputs":[{"name":"temperature","value":25},{"name":"humidity","value":60}]}` |
+
+注意：
+- 继电器命令必须发到 **relay-cc/relaycc** 的 `function/invoke`；发到 sensorcc 设备或 `/xxx/reply` 结尾的主题（那是设备回给平台的回复通道）设备不会响应
+- `messageId` 唯一即可；前提是 `relay_simulator_jl.py`（或路线 A 的 ESP32 板）在线
+- 命令执行后设备会自动回复 invoke/reply 并上报最新属性，MQTTX 订阅 `/relay-cc/relaycc/properties/report` 可看到回传
+
+## 四、配置速查
 
 | 运行环境 | Modbus 从站地址 | port | unit_id | 说明 |
 |---|---|---|---|---|
@@ -141,9 +157,10 @@ python -m mpremote reset
 | ESP32 实物（路线B） | 192.168.30.145（以串口打印为准） | 502 | 7 | 从站 = 板子本身 |
 
 - MQTT 一律 `172.16.4.211:9783`（test/123456）；上报 topic `/relay-cc/relaycc/properties/report`、`/sensor-cc/sensorcc/properties/report`。
-- 继电器板为**高电平触发**（`config.py` 中 `RELAY_ACTIVE_LOW = False`）；若换板后出现"上电全亮/UI开=灭"，改这个开关即可。
+- 继电器板为**高电平触发**（`config.py` 中 `RELAY_ACTIVE_LOW = False`）；若换板后出现"UI开=灭/关=亮"，改这个开关即可。
+- ESP32 板**上电后 4 路继电器默认全开**（`relay_hw.init()` 设计行为），随后可正常控制。
 
-## 四、常见问题
+## 五、常见问题
 
 | 现象 | 处理 |
 |---|---|

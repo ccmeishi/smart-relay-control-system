@@ -11,11 +11,11 @@ _pins = []
 
 
 def init():
-    """初始化 GPIO, 上电时继电器全部置为关"""
+    """初始化 GPIO, 上电时继电器全部置为开"""
     global _pins
     _pins = [Pin(p, Pin.OUT) for p in C.RELAY_PINS]
     for i in range(len(_pins)):
-        _state[i] = 0
+        _state[i] = 1
         _apply(i)
 
 
