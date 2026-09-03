@@ -3,7 +3,7 @@
 逻辑状态为唯一事实来源, GPIO 电平由 RELAY_ACTIVE_LOW 换算,
 两条路线 (MQTT / Modbus) 共用, 保证固件切换时行为一致。
 """
-from machine import Pin
+from machine import Pin, Timer
 import config as C
 
 _state = [0] * len(C.RELAY_PINS)
@@ -47,3 +47,50 @@ def states():
 
 def count():
     return len(_state)
+
+
+# ---------- 板载按键 (BOOT/KEY 键 = GPIO9) ----------
+_btn_timer = None
+
+
+def toggle_all():
+    """全部继电器一起翻转 (全开<->全关), 返回新的状态"""
+    new = 0 if all(_state) else 1
+    for i in range(len(_state)):
+        _state[i] = new
+        _apply(i)
+    return new
+
+
+def attach_button(pin_num=9, on_change=None):
+    """绑定板载按键: 每按一次(按下再松开)翻转全部继电器。
+
+    on_change(new_state) 为可选回调, 在定时器中断上下文执行,
+    只能做轻量操作, 不要做网络/耗时操作。
+    """
+    global _btn_timer
+    btn = Pin(pin_num, Pin.IN, Pin.PULL_UP)
+    last_raw = 1                     # 上次原始电平 (上拉, 松开=1)
+    settled = 1                      # 消抖后的稳定电平
+    armed = False                    # 已按下, 等待松开触发
+
+    def scan(_t):
+        nonlocal last_raw, settled, armed
+        raw = btn.value()
+        if raw != last_raw:          # 电平抖动中, 等它稳定
+            last_raw = raw
+            return
+        if raw == settled:
+            return
+        settled = raw
+        if raw == 0:                 # 稳定按下
+            armed = True
+        elif armed:                  # 稳定松开 -> 触发一次翻转
+            armed = False
+            new = toggle_all()
+            print("[relay_hw] 板载按键: 4路 -> %s" % ("开" if new else "关"))
+            if on_change:
+                on_change(new)
+
+    _btn_timer = Timer(0)
+    _btn_timer.init(period=20, mode=Timer.PERIODIC, callback=scan)

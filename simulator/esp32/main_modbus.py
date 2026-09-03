@@ -112,6 +112,7 @@ def run():
     ip = wlan.ifconfig()[0]
 
     relay_hw.init()
+    relay_hw.attach_button()     # 板载BOOT键: 按一次 4路全开<->全关 (PC轮询自动读到)
     s = socket.socket()
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("0.0.0.0", C.MODBUS_PORT))

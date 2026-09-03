@@ -95,7 +95,7 @@ pip install -r simulator\day1\requirements.txt -r simulator\day2\requirements.tx
 |---|---|
 | `boot.py` | 上电自动连 WiFi |
 | `config.py` | 全局配置：WiFi 账号、MQTT、继电器 GPIO、触发电平 |
-| `relay_hw.py` | GPIO 抽象层（逻辑 0/1 ↔ 电平换算），**上电默认 4 路全开** |
+| `relay_hw.py` | GPIO 抽象层（逻辑 0/1 ↔ 电平换算），**上电默认 4 路全开**；内置板载按键支持：**按一下板上 KEY/BOOT 键 = 4 路一起 全开↔全关** |
 | `main_mqtt.py` | **路线 A**：板子作为 MQTT 设备直连 EMQX，脱离 PC 独立上报/受控 |
 | `main_modbus.py` | **路线 B**：板子作为 Modbus TCP 从站（端口 502），PC 端直接读写控制继电器 |
 | `serial_monitor.py` | 串口日志工具（看板子打印了什么、IP 是多少） |
@@ -237,6 +237,7 @@ python tools\modbus_slave_sim.py
 
 > 板子：ESP32-C3 四路继电器开发板。USB 线连接电脑 = 供电 + 烧录 + 看日志。
 > 板子行为：上电自动连 WiFi，**4 路继电器默认全开**（程序设计如此）。
+> 板载按键：**按一下 KEY（BOOT）键 = 4 路一起全开↔全关**（本地手动控制；路线 B 下 PC 轮询自动看到变化，路线 A 下平台 5 秒内自动刷新）。注意上电瞬间按住不放会进下载模式，正常运行时短按即可。
 
 ### 6.1 第一次烧录（只需做一次）
 
@@ -327,4 +328,5 @@ python -m mpremote reset                :: 让板子重启生效
 | 控制无反应（MQTT 模式） | 确认 `relay_simulator_jl.py` 在跑；确认没有第二个相同程序的窗口（client_id 冲突互踢） |
 | 值莫名自己变 | 实训从站是共享的，可能被其他小组写入；本地复现用 `modbus_slave_sim.py` |
 | 实物"UI开=灭/关=亮" | 触发电平配反，`config.py` 改 `RELAY_ACTIVE_LOW` 后重新 `mpremote cp config.py :/` + reset |
+| 按板载 KEY 键没反应 | 固件需要是 2024-09 之后版本（含按键功能）；确认已重新上传 `relay_hw.py` 和 `main_modbus.py`(`:/main.py`) 并 reset；按的应是 **KEY/BOOT** 键（RST 键是复位）；串口日志里应出现 `[relay_hw] 板载按键: 4路 -> 开/关` |
 | 任务管理器杀进程误伤 | 不要 `taskkill /IM python.exe`（会把从站一起杀掉）；直接关对应窗口 |
