@@ -1,7 +1,7 @@
 {
   "modbus": {
-    "host": "192.168.30.145",
-    "port": 502,
+    "host": "192.168.20.59",
+    "port": 5502,
     "unit_id": 7,
     "register_start": 2,
     "register_count": 8,
