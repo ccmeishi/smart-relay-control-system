@@ -170,7 +170,7 @@ def on_msg(topic, payload):
 def run():
     ensure_wifi()
     relay_hw.init()
-    relay_hw.attach_button()     # 板载BOOT键: 按一次 4路全开<->全关 (5s内变化检测自动上报)
+    relay_hw.attach_buttons(C.BUTTON_MAP)   # SW1~4短按各切一路, SW2双击切全部
     global _last_report
     while True:
         try:

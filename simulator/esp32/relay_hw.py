@@ -4,6 +4,7 @@
 两条路线 (MQTT / Modbus) 共用, 保证固件切换时行为一致。
 """
 from machine import Pin, Timer
+import time
 import config as C
 
 _state = [0] * len(C.RELAY_PINS)
@@ -49,8 +50,16 @@ def count():
     return len(_state)
 
 
-# ---------- 板载按键 (BOOT/KEY 键 = GPIO9) ----------
+# ---------- 板载按键 ----------
 _btn_timer = None
+
+
+def toggle(idx):
+    """切换单路, 返回新状态"""
+    new = 0 if _state[idx] else 1
+    _state[idx] = new
+    _apply(idx)
+    return new
 
 
 def toggle_all():
@@ -62,35 +71,57 @@ def toggle_all():
     return new
 
 
-def attach_button(pin_num=9, on_change=None):
-    """绑定板载按键: 每按一次(按下再松开)翻转全部继电器。
+def attach_buttons(mapping, double_ms=350):
+    """绑定板载按键。
 
-    on_change(new_state) 为可选回调, 在定时器中断上下文执行,
-    只能做轻量操作, 不要做网络/耗时操作。
+    mapping: [(gpio, relay_idx), ...]  按键 GPIO -> 继电器序号(0起)
+      - 普通键: 短按(按下再松开)即切换对应一路
+      - BOOT 键(C.BUTTON_BOOT_GPIO): 短按切对应一路;
+        double_ms 内连按两次 = 双击, 切换全部
     """
     global _btn_timer
-    btn = Pin(pin_num, Pin.IN, Pin.PULL_UP)
-    last_raw = 1                     # 上次原始电平 (上拉, 松开=1)
-    settled = 1                      # 消抖后的稳定电平
-    armed = False                    # 已按下, 等待松开触发
+    keys = []
+    for gpio, idx in mapping:
+        keys.append({
+            'gpio': gpio, 'idx': idx, 'is_boot': gpio == C.BUTTON_BOOT_GPIO,
+            'pin': Pin(gpio, Pin.IN, Pin.PULL_UP),
+            'last_raw': 1, 'settled': 1, 'armed': False,
+            'clicks': 0, 't_release': 0,
+        })
 
     def scan(_t):
-        nonlocal last_raw, settled, armed
-        raw = btn.value()
-        if raw != last_raw:          # 电平抖动中, 等它稳定
-            last_raw = raw
-            return
-        if raw == settled:
-            return
-        settled = raw
-        if raw == 0:                 # 稳定按下
-            armed = True
-        elif armed:                  # 稳定松开 -> 触发一次翻转
-            armed = False
-            new = toggle_all()
-            print("[relay_hw] 板载按键: 4路 -> %s" % ("开" if new else "关"))
-            if on_change:
-                on_change(new)
+        now = time.ticks_ms()
+        for k in keys:
+            raw = k['pin'].value()
+            if raw != k['last_raw']:          # 电平抖动中, 等它稳定
+                k['last_raw'] = raw
+                continue
+            if raw == k['settled']:
+                # BOOT 单击后超时未等到第二次按下 -> 按单击处理
+                if (k['is_boot'] and k['clicks'] == 1 and raw == 1
+                        and time.ticks_diff(now, k['t_release']) > double_ms):
+                    k['clicks'] = 0
+                    new = toggle(k['idx'])
+                    print("[relay_hw] SW(GPIO%d) 短按: 继电器%d -> %s"
+                          % (k['gpio'], k['idx'] + 1, "开" if new else "关"))
+                continue
+            k['settled'] = raw
+            if raw == 0:                      # 稳定按下
+                k['armed'] = True
+            elif k['armed']:                  # 稳定松开 = 一次点击
+                k['armed'] = False
+                if k['is_boot']:
+                    k['clicks'] += 1
+                    k['t_release'] = now
+                    if k['clicks'] >= 2:      # 双击 -> 全部切换
+                        k['clicks'] = 0
+                        new = toggle_all()
+                        print("[relay_hw] BOOT 双击: 4路 -> %s"
+                              % ("开" if new else "关"))
+                else:
+                    new = toggle(k['idx'])
+                    print("[relay_hw] SW(GPIO%d) 短按: 继电器%d -> %s"
+                          % (k['gpio'], k['idx'] + 1, "开" if new else "关"))
 
     _btn_timer = Timer(0)
     _btn_timer.init(period=20, mode=Timer.PERIODIC, callback=scan)

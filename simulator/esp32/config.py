@@ -21,7 +21,12 @@ DEVICE_ID = "relaycc"
 
 # ---------- 继电器硬件 ----------
 RELAY_PINS = [3, 4, 5, 7]             # 卖家图: 四路继电器从左至右 IO3/IO4/IO5/IO7
-RELAY_ACTIVE_LOW = False              # 实测: UI开=亮/关=灭, 本板为高电平触发
+RELAY_ACTIVE_LOW = False              # 高电平触发 (2024-09 实测)
+
+# ---------- 板载按键 ----------
+# (按键 GPIO, 继电器序号0起): SW1=IO10->继电器1, SW2=IO9->继电器2, SW3=IO6->继电器3, SW4=IO8->继电器4
+BUTTON_MAP = [(10, 0), (9, 1), (6, 2), (8, 3)]
+BUTTON_BOOT_GPIO = 9                  # SW2 与 BOOT 共用: 短按切继电器2, 双击切换全部
 
 # ---------- 路线B: Modbus TCP 从站 ----------
 MODBUS_PORT = 502
