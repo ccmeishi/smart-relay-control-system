@@ -348,6 +348,89 @@ python -m mpremote connect COM5 reset
 - 按键动作自动同步：路线 B 下 PC 轮询 2~3 秒看到，路线 A 下板子 5 秒内自动上报平台
 - 串口日志特征：`[relay_hw] SW(GPIO10) 短按: 继电器1 -> 关`、`[relay_hw] BOOT 双击: 4路 -> 开`
 
+### 6.5 Day5 配网固件（统一 main.py，替代旧的 main_mqtt / main_modbus）
+
+Day5 固件是**一个 main.py 覆盖全部场景**，配好后板子就能脱离电脑独立工作，不再需要改 config.py 重烧。
+
+**固件文件结构**（和旧固件对比）：
+
+| 文件 | 作用 | 和旧版区别 |
+|---|---|---|
+| `boot.py` | 极简启动横幅 | 不再自动连 WiFi（配网模式下无配置可连） |
+| `config.py` | **删除** | 被 app_config.py + /config.json 取代 |
+| `app_config.py` | 配置持久化模块 | 新！读写 /config.json，设备ID 默认取 MAC |
+| `ap_config.py` | AP 配网网页服务 | 新！192.168.4.1 开热点、HTTP 表单、保存后自动重启 |
+| `relay_hw.py` | GPIO 抽象 + 按键扫描 | 硬件常量内置，加 SW1 长按 5 秒检测 |
+| `main.py` | **统一入口** | 新！双模式切换 + MQTT 指数退避重连 |
+| `main_mqtt.py` / `main_modbus.py` | **保留但不再推荐** | 独立路线仍可单独刷入 |
+
+**核心流程**：
+
+```
+上电 → 读 /config.json
+  ├── 无配置 / 缺字段 → 自动进入配网模式（开放热点 RELAY-SETUP-xxxx）
+  │     手机连热点 → 浏览器打开 http://192.168.4.1 → 填写 → 保存 → 自动重启
+  └── 有配置 → 正常运行模式
+        ├── WiFi 连不上 → 每 10 秒重试，期间长按 SW1 5 秒可进配网
+        ├── MQTT 连不上 → 指数退避 5→10→20→40→60 秒重试
+        └── 运行中长按 SW1 5 秒 → 立即切到配网模式（热点+网页）
+```
+
+**Day5 上传步骤**（COM5 按实际端口改）：
+
+```powershell
+cd E:\shixiproject\traeproject1\simulator\esp32
+
+:: 1. 第一次（无配置）: 全部上传, 板子启动自动进配网模式
+python -m mpremote connect COM5 cp boot.py relay_hw.py app_config.py ap_config.py main.py :/
+python -m mpremote connect COM5 cp umqtt/simple.py :/umqtt/simple.py   :: 首次 mkdir :/umqtt
+python -m mpremote connect COM5 reset
+
+:: 2. 之后只改了某个文件: 单独覆盖即可
+python -m mpremote connect COM5 cp main.py :/
+python -m mpremote connect COM5 reset
+```
+
+✅ 预期串口输出（首次启动，无配置）：
+```
+boot: ESP32 启动, MAC = 7ce8b1c1a798
+[main] 设备启动, MAC = 7ce8b1c1a798
+[main] 未检测到有效配置, 进入配网模式
+[ap] 热点已开放: RELAY-SETUP-a799 (开放网络)
+[ap] 手机连热点后打开 http://192.168.4.1
+```
+
+✅ 预期串口输出（配好后正常启动）：
+```
+boot: ESP32 启动, MAC = 7ce8b1c1a798
+[main] 设备启动, MAC = 7ce8b1c1a798
+[main] 连接WiFi: Office-WiFi
+[main] WiFi OK, IP: 192.168.30.145
+[main] MQTT 已连接 172.16.4.211:9783 设备=7ce8b1c1a798
+[main] 上报: {'relay1': 1, 'relay2': 1, 'relay3': 1, 'relay4': 1}
+```
+
+**长按 SW1 5 秒重新配网**（运行中触发）：
+```
+[relay_hw] SW1 长按5秒: 请求进入配网模式
+[main] 收到配网请求, 切换到配网模式
+[ap] 热点已开放: RELAY-SETUP-a799 (开放网络)
+```
+
+**板子热点信息**：
+- SSID：`RELAY-SETUP-xxxx`（xxxx = MAC 后 4 位，每块板子唯一）
+- 加密：开放网络（无密码）
+- 网关 IP：`192.168.4.1`（手机连上后自动拿到 192.168.4.x）
+- 配置表单里设备 ID 已预填为本机 MAC，一般不需要改；如果 JetLinks 平台上的设备是自定义 ID（比如 relaycc），把它填进表单再保存
+
+**配置持久化验证**：保存后重启，串口应该跳过配网直接连 WiFi/MQTT。断电再上电也一样——配置写在 Flash 的 `/config.json`，不丢。
+
+**MQTT 断线重连**：
+- WiFi 重连：20 秒超时，循环重试
+- MQTT 重连：指数退避 5→10→20→40→60 秒（封顶）
+- 所有重连等待期间都在轮询 SW1 长按请求，**不会因为重连而卡死配网入口**
+- WiFi 连不上时会明确提示"长按 SW1 5 秒可重新配网"
+
 ---
 
 ## 7. 配置速查
@@ -375,4 +458,7 @@ python -m mpremote connect COM5 reset
 | 实物"UI开=灭/关=亮" | 触发电平配反，`config.py` 改 `RELAY_ACTIVE_LOW` 后重新 `mpremote cp config.py :/` + reset |
 | 按板载按键没反应 | 确认按的是 SW1~SW4（SW2 就是 BOOT 键）；确认已上传最新 `relay_hw.py`/`config.py`/`main_modbus.py`(`:/main.py`) 并 reset；串口日志里应出现 `[relay_hw] SW(GPIOx) 短按` 或 `BOOT 双击`；SW2 双击间隔要 < 0.35 秒 |
 | SW2 短按比别的键慢半拍 | 正常现象：SW2 要等 0.35 秒确认不是双击才执行（详见 6.4 判定逻辑） |
+| Day5 固件启动后反复进配网 | /config.json 缺失或字段不全；删板子上的 /config.json 让它重新进配网：`python -m mpremote connect COM5 rm :config.json` |
+| Day5 MQTT 连不上反复退避 | 检查 /config.json 里的 mqtt_host/port/user/pass；也可以长按 SW1 5 秒重新配网，不要硬等退避循环 |
+| 板子热点搜不到 | 确认刷的是 Day5 main.py（不是旧 main_mqtt/main_modbus）；长按 SW1 5 秒强制进配网 |
 | 任务管理器杀进程误伤 | 不要 `taskkill /IM python.exe`（会把从站一起杀掉）；直接关对应窗口 |

@@ -22,6 +22,7 @@ import socket
 import ustruct
 import network
 import _thread
+import time
 import config as C
 import relay_hw
 
@@ -123,8 +124,16 @@ def client_worker(conn, addr):
 
 def run():
     wlan = network.WLAN(network.STA_IF)
+    wlan.active(True)
+    if not wlan.isconnected():                  # boot.py 不再自动连网, 自行连接
+        log("连接WiFi:", C.WIFI_SSID)
+        wlan.connect(C.WIFI_SSID, C.WIFI_PASS)
+        for _ in range(200):
+            time.sleep_ms(200)
+            if wlan.isconnected():
+                break
     if not wlan.isconnected():
-        raise OSError("WiFi 未连接, 请先检查 boot.py / config.py")
+        raise OSError("WiFi 未连接, 请检查 config.py 的 WIFI_SSID/PASS")
     ip = wlan.ifconfig()[0]
 
     relay_hw.init()
