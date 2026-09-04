@@ -120,9 +120,13 @@ def start_ap():
 
 
 def run(cfg=None):
-    """阻塞运行配网网页服务; 保存成功后自动重启"""
+    """阻塞运行配网网页服务; 保存成功后自动重启。
+
+    cfg=None 时优先读已有配置 /config.json (保留 device_id 等用户值),
+    读不到才用 defaults() (device_id=MAC)。
+    """
     if cfg is None:
-        cfg = app_config.defaults()
+        cfg = app_config.load() or app_config.defaults()
     start_ap()
 
     srv = socket.socket()
@@ -163,7 +167,7 @@ def run(cfg=None):
                 form = _parse_form(body)
                 print("[ap] 收到配置:", {k: (v if k != "wifi_pass" and k != "mqtt_pass" else "***")
                                         for k, v in form.items()})
-                new_cfg = app_config.defaults()
+                new_cfg = dict(cfg)              # 基于当前配置 (保留未改字段)
                 new_cfg.update({k: form.get(k, "") for k in (
                     "wifi_ssid", "wifi_pass", "mqtt_host", "mqtt_user",
                     "mqtt_pass", "product_id", "device_id")})
