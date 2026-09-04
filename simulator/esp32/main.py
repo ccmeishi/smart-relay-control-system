@@ -177,9 +177,38 @@ def on_msg(topic, payload):
                 relay_hw.set(i, on)
             applied = {"relay%d" % (i + 1): on
                        for i in range(relay_hw.count())}
+        elif fid == "set_relay":
+            # JetLinks 自定义: 继电器编号(1起) + 状态(0/1)
+            idx = int(params.get("继电器编号", params.get("relay", 0))) - 1
+            on = 1 if int(params.get("状态", params.get("state", 0))) else 0
+            if 0 <= idx < relay_hw.count():
+                relay_hw.set(idx, on)
+                applied = {"relay%d" % (idx + 1): on}
+            else:
+                applied = {}
+        elif fid == "toggle_relay":
+            # JetLinks 自定义: 切换单个继电器
+            idx = int(params.get("继电器编号", params.get("relay", 0))) - 1
+            if 0 <= idx < relay_hw.count():
+                relay_hw.toggle(idx) if hasattr(relay_hw, 'toggle') else None
+                applied = {"relay%d" % (idx + 1): relay_hw.get(idx)}
+            else:
+                applied = {}
+        elif fid == "batch_set":
+            # JetLinks 自定义: 批量设置, 参数可按 relay1~4 或 编号+状态 传
+            applied = {}
+            for k, v in params.items():
+                if k.startswith("relay"):
+                    try:
+                        i = int(k[5:]) - 1
+                        if 0 <= i < relay_hw.count():
+                            relay_hw.set(i, 1 if int(v) else 0)
+                            applied[k] = 1 if int(v) else 0
+                    except ValueError:
+                        pass
         else:
             applied = apply_props(params)
-        log("功能调用:", fid, "->", applied)
+        log("功能调用:", fid, params, "->", applied)
         send_reply(T["invoke_reply"], mid, {}, bool(applied))
         report()
 
