@@ -277,6 +277,26 @@ def on_msg(topic, payload):
                             applied[k] = 1 if int(v) else 0
                     except ValueError:
                         pass
+        elif fid in ("set_temp", "set_temperature", "set_modbus"):
+            # Day7 新增: 通过功能调用写 Modbus 从站温度寄存器
+            value = params.get("temperature", params.get("温度", params.get("temp", params.get("目标温度", None))))
+            if value is not None:
+                try:
+                    applied = {"temperature": float(value)} if modbus_gw.write("temperature", float(value)) else {}
+                except (TypeError, ValueError):
+                    applied = {}
+            else:
+                applied = {}
+        elif fid in ("set_humidity", "set_hum"):
+            # Day7 新增: 通过功能调用写 Modbus 从站湿度寄存器
+            value = params.get("humidity", params.get("湿度", params.get("hum", None)))
+            if value is not None:
+                try:
+                    applied = {"humidity": float(value)} if modbus_gw.write("humidity", float(value)) else {}
+                except (TypeError, ValueError):
+                    applied = {}
+            else:
+                applied = {}
         else:
             applied = apply_props(params)
         log("功能调用:", fid, params, "->", applied)
