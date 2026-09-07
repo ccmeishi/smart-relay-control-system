@@ -193,19 +193,28 @@ def send_reply(topic, mid, extra, success=True):
 
 
 def apply_props(props):
-    """{"relay1":1,...} -> GPIO, 返回实际生效子集 (0/1 钳位)"""
+    """{"relay1":1, "temperature":28} -> GPIO + Modbus 写寄存器, 返回实际生效子集"""
     applied = {}
     for k, v in props.items():
-        if not k.startswith("relay"):
-            continue
-        try:
-            idx = int(k[5:]) - 1
-        except ValueError:
-            continue
-        if 0 <= idx < relay_hw.count():
-            on = 1 if int(v) else 0
-            relay_hw.set(idx, on)
-            applied[k] = on
+        if k.startswith("relay"):
+            try:
+                idx = int(k[5:]) - 1
+            except ValueError:
+                continue
+            if 0 <= idx < relay_hw.count():
+                on = 1 if int(v) else 0
+                relay_hw.set(idx, on)
+                applied[k] = on
+        else:
+            # 非 relay key: 尝试写 Modbus 从站寄存器 (Day7 新增)
+            if modbus_gw.supports_write(k):
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if modbus_gw.write(k, fv):
+                    applied[k] = fv
+            # 其他未知 key 静默忽略 (JetLinks 物模型里可能有但固件不支持的)
     return applied
 
 

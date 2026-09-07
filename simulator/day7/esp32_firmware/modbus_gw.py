@@ -107,19 +107,24 @@ class _SlaveConn:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(self.timeout)
+            # 启用 TCP keepalive: 让操作系统自动探测死链, 避免半开连接堆积
+            # MicroPython socket.setsockopt 支持 SO_KEEPALIVE=1
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            except Exception:
+                pass  # 某些板子的 MicroPython 不支持, 忽略
             s.connect((self.host, self.port))
             self.sock = s
             self.fail_count = 0
             self.retry_after = 0
             return True
         except OSError as e:
-            print("[modbus] 连接失败 %s:%d -> %s" % (self.host, self.port, e))
+            print("[modbus] connect fail %s:%d -> %s" % (self.host, self.port, e))
             self.sock = None
             self.fail_count += 1
             if self.fail_count >= 3:
-                # 连续失败 3 次, 进入 30 秒冷却, 避免主循环被反复阻塞
                 self.retry_after = time.ticks_add(time.ticks_ms(), 30000)
-                print("[modbus] %s:%d 进入 30 秒冷却" % (self.host, self.port))
+                print("[modbus] %s:%d cooling down 30s" % (self.host, self.port))
             return False
 
     def close(self):
@@ -170,6 +175,38 @@ class _SlaveConn:
             self._on_fail()
             return None
 
+    def write_holding(self, unit_id, addr, value):
+        """写单个保持寄存器 0x06, 返回 True/False"""
+        if self._in_cooldown():
+            return False
+        if self.sock is None:
+            if not self.connect():
+                return False
+        pdu = struct.pack(">BHH", 0x06, addr, value)
+        frame, tid = _mbap(unit_id, pdu)
+        try:
+            self.sock.sendall(frame)
+            head = self._recv_exact(7)
+            if head is None:
+                self._on_fail()
+                return False
+            pdu = self._recv_exact(4)   # 0x06 响应 PDU 固定 4 字节: func(1)+addr(2)+val(2)
+            if pdu is None:
+                self._on_fail()
+                return False
+            full = head + pdu
+            parsed = _parse_response(full, tid)
+            if parsed is None:
+                self._on_fail()
+                return False
+            _uid, func, data = parsed
+            self.fail_count = 0       # 写成功也清零
+            return func == 0x06 and len(data) >= 4
+        except OSError as e:
+            print("[modbus] write fail %s:%d -> %s" % (self.host, self.port, e))
+            self._on_fail()
+            return False
+
     def _recv_exact(self, n):
         buf = b""
         while len(buf) < n:
@@ -183,12 +220,13 @@ class _SlaveConn:
         return buf
 
     def _on_fail(self):
+        """通信失败 -> 立即关闭 socket, 计数失败, 达阈值进冷却"""
         self.fail_count += 1
-        # 单次通信失败也进入冷却 (快速恢复, 避免重连风暴)
+        # 无论第几次失败都立刻 close: 留着脏 socket 下次 send/recv 还会超时, 白白浪费 1s
+        self.close()
         if self.fail_count >= 3:
-            self.close()
             self.retry_after = time.ticks_add(time.ticks_ms(), 15000)
-            print("[modbus] %s:%d 进入 15 秒冷却" % (self.host, self.port))
+            print("[modbus] %s:%d cooling down 15s" % (self.host, self.port))
 
 
 # ---------- 采集网关 ----------
@@ -209,8 +247,9 @@ class ModbusGateway:
     def __init__(self, slaves_cfg):
         self.enabled = bool(slaves_cfg)
         self.conns = {}          # key=(host,port,unit_id) -> _SlaveConn
-        self.points = []         # [(slave_idx, point_idx, next_due_ms), ...]
+        self.points = []         # [{conn, unit_id, addr, count, type, key, period, scale, next_due}, ...]
         self.values = {}         # key -> 最新值
+        self._write_info = {}    # key -> (conn, unit_id, addr, scale) 反向映射, 用于 JetLinks 下发
         self._parse_slaves(slaves_cfg)
 
     def _parse_slaves(self, slaves_cfg):
@@ -249,6 +288,15 @@ class ModbusGateway:
                     "scale": scale,
                     "next_due": time.ticks_add(time.ticks_ms(), 1000 + pi * 500),
                 })
+                # 同时建反向映射: key -> (conn, unit_id, addr, scale)
+                # 用于 JetLinks 下发属性时知道该写哪个寄存器
+                if pkey:
+                    self._write_info[pkey] = {
+                        "conn": conn,
+                        "unit_id": unit_id,
+                        "addr": addr,
+                        "scale": scale,
+                    }
         if not self.points:
             self.enabled = False
 
@@ -277,6 +325,8 @@ class ModbusGateway:
                 if best.get("scale") is not None:
                     val = round(val * best["scale"], 2)
                 self.values[best["key"]] = val
+                # 成功 -> 清除失败计数, 让之前的瞬断不再污染状态
+                conn.fail_count = 0
                 print("[modbus] %s = %s (addr=%s, type=%s)" % (
                     best["key"], val, hex(best["addr"]), best["type"]))
         # 安排下一次采集
@@ -291,6 +341,34 @@ class ModbusGateway:
         """返回配置的采集点数量"""
         return len(self.points)
 
+    def supports_write(self, key):
+        """这个 key 对应的 Modbus 采集点能否被写入?"""
+        return key in self._write_info
+
+    def write(self, key, value):
+        """JetLinks 下发属性 -> 写 Modbus 从站寄存器.
+        value 是用户可读值 (如 28.0), 函数会按 scale 反向乘上去再写寄存器."""
+        info = self._write_info.get(key)
+        if info is None:
+            return False
+        scale = info["scale"]
+        if scale is not None and scale != 0:
+            # 反向换算: 用户给 28.0, 寄存器存 x10 = 280
+            reg_val = int(round(value / scale))
+        else:
+            reg_val = int(value)
+        if reg_val < 0 or reg_val > 65535:
+            print("[modbus] write %s = %s -> 超出 uint16 范围" % (key, value))
+            return False
+        ok = info["conn"].write_holding(info["unit_id"], info["addr"], reg_val)
+        if ok:
+            self.values[key] = value   # 本地也存一份, 上报时用
+            print("[modbus] write OK %s = %s -> reg 0x%04X = %d" % (
+                key, value, info["addr"], reg_val))
+        else:
+            print("[modbus] write FAIL %s = %s" % (key, value))
+        return ok
+
     def close_all(self):
         for c in self.conns.values():
             c.close()
@@ -302,8 +380,10 @@ _gw_instance = None
 
 
 def init(slaves_cfg):
-    """初始化全局网关实例"""
+    """初始化全局网关实例. 若已有实例则先 close 旧连接, 防止多条 socket 堆积."""
     global _gw_instance
+    if _gw_instance is not None:
+        _gw_instance.close_all()
     _gw_instance = ModbusGateway(slaves_cfg)
     return _gw_instance
 
@@ -323,6 +403,19 @@ def point_count():
     if _gw_instance:
         return _gw_instance.point_count()
     return 0
+
+
+def write(key, value):
+    """写某个 Modbus 从站寄存器 (JetLinks 下发属性时调用)"""
+    if _gw_instance:
+        return _gw_instance.write(key, value)
+    return False
+
+
+def supports_write(key):
+    if _gw_instance:
+        return _gw_instance.supports_write(key)
+    return False
 
 
 def close():
