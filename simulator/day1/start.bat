@@ -1,13 +1,25 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title Day1 - Sensor Simulator (Modbus TCP Slave)
 echo ========================================
-echo   Day1 æ¸©æ¹¿åº¦æ¨¡æ‹Ÿå™¨
-echo   Modbus TCP ä»ç«™
-echo   ç«¯å£: 5502  ä»ç«™åœ°å€: 7
-echo   Ctrl+C é€€å‡º
+echo   Day1 ÎÂÊª¶ÈÄ£ÄâÆ÷
+echo   Modbus TCP ´ÓÕ¾
+echo   ¶Ë¿Ú: 5502  ´ÓÕ¾µØÖ·: 7
+echo   Ctrl+C ÍË³ö
 echo ========================================
 echo.
+
+REM ¼ì²é 5502 ¶Ë¿ÚÊÇ·ñ±»Õ¼ÓÃ
+netstat -ano | findstr ":5502 " | findstr "LISTENING" >nul
+if !errorlevel!==0 (
+    echo [¾¯¸æ] ¶Ë¿Ú 5502 ÒÑ±»Õ¼ÓÃ, ¿ÉÄÜÒÑÓĞÄ£ÄâÆ÷ÔÚÔËĞĞ
+    echo   ½¨Òé: ÏÈ¹ØµôÆäËûÄ£ÄâÆ÷´°¿ÚÔÙÆô¶¯
+    echo.
+    choice /C YN /M "ÈÔÈ»Æô¶¯"
+    if !errorlevel!==2 exit /b 1
+)
+
 cd /d "%~dp0"
 python sensor_simulator.py
 pause

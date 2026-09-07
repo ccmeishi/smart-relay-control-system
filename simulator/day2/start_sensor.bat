@@ -1,11 +1,10 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Sensor Simulator - JetLinks
+title Day2 - Sensor Simulator (JetLinks)
 echo ========================================
-echo   Temp/Humidity Sensor Simulator
-echo   JetLinks Direct Connect
-echo   Product: sensor-cc  Device: sensorcc
-echo   Ctrl+C to exit
+echo   Day2 温湿度模拟器 (JetLinks 格式)
+echo   Ctrl+C 退出
 echo ========================================
 echo.
 cd /d "%~dp0"

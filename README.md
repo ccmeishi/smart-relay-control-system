@@ -951,19 +951,55 @@ Topic: /relay-cc/relaycc/properties/read
 
 ### 方式 1：双击启动脚本（推荐）
 
-每个 dayx 文件夹里都有 start_*.bat 启动脚本，双击即可运行：
+每个 dayx 文件夹里都有 start_*.bat 启动脚本，**在 Windows 上双击即可运行**。
+所有脚本使用 ANSI 编码（Windows cmd 默认编码），中文不会乱码。
 
-| 任务 | 脚本位置 | 说明 |
-|------|---------|------|
-| Day1 温湿度模拟器 | `simulator\day1\start.bat` | Modbus TCP 从站 |
-| Day2 继电器模拟器 | `simulator\day2\start_relay.bat` | JetLinks MQTT 直连 |
-| Day2 温湿度模拟器 | `simulator\day2\start_sensor.bat` | JetLinks MQTT 直连 |
-| Day2 Web UI | `simulator\day2\start_ui.bat` | 浏览器开 http://localhost:8081 |
-| Day5 全流程烧录 | `simulator\day5\flash_and_upload.bat` | 擦除→烧 MicroPython→上传源码→监控 |
-| Day5 仅上传源码 | `simulator\day5\upload_only.bat` | 板子已有 MicroPython，只更新 .py |
-| Day7 增量上传 | `simulator\day7\upload_modbus.bat` | 上传 modbus_gw.py + 3 个修改文件 |
-| Day7 Modbus 模拟器 | `simulator\day7\start_modbus_sim.bat` | 5502 端口 unit_id=7 |
-| 串口监控 | `simulator\esp32\start_serial.bat` 或 `day7\start_serial.bat` | 自动检测 COM 口 |
+#### 脚本清单 + 冲突提示
+
+| 脚本 | 功能 | 端口/COM | ⚠️ 启动前注意 |
+|------|------|---------|--------------|
+| `day1\start.bat` | Day1 温湿度模拟器 | TCP **5502** | **day7/start_modbus_sim.bat 和它互斥**（都占 5502）。脚本会检测，若已占用会弹窗问你是否继续 |
+| `day2\start_relay.bat` | 继电器 JetLinks 模拟器 | — | 读 Day1 的 5502 端口，**建议 day1 先启动**再开这个。脚本会自动检测并提示 |
+| `day2\start_sensor.bat` | 温湿度 JetLinks 模拟器 | — | 和 day2/start_relay.bat 不冲突，可同时运行 |
+| `day2\start_ui.bat` | Web UI | TCP **8081** | **重复双击会占两个 8081**，脚本会检测提示 |
+| `day5\flash_and_upload.bat` | 全流程烧录 | **COM口** | **关闭所有串口监控窗口**（start_serial.bat），否则 COM 口被占用导致烧录失败 |
+| `day5\upload_only.bat` | 仅上传源码 | **COM口** | 同上：先关掉串口监控 |
+| `day7\upload_modbus.bat` | Day7 增量上传 | **COM口** | 同上：先关掉串口监控 |
+| `day7\start_modbus_sim.bat` | Modbus 从站 | TCP **5502** | 和 day1/start.bat 互斥（同端口）。脚本会检测并提示 |
+| `esp32\start_serial.bat` 或 `day7\start_serial.bat` | 串口监控 | **COM口** | **mpremote / esptool 用之前必须关掉它**！COM 口同一时刻只能被一个程序打开 |
+
+#### 最常用的启动组合
+
+**场景 A：只测 Day1→Day2（PC 端完整链路）**
+```
+打开 3 个窗口:
+  1. 双击 day1\start.bat           ← 先起温湿度 Modbus 从站
+  2. 双击 day2\start_relay.bat     ← 再起继电器模拟器
+  3. 双击 day2\start_ui.bat        ← 最后开 Web UI (浏览器自动打开)
+```
+
+**场景 B：测 Day5 固件烧录**
+```
+1. 先关闭所有串口监控窗口
+2. 双击 day5\flash_and_upload.bat   ← 全流程一次搞定
+3. 烧完后双击 esp32\start_serial.bat ← 看开机日志
+```
+
+**场景 C：测 Day7 Modbus 网关**
+```
+打开 3 个窗口:
+  1. 双击 day7\start_modbus_sim.bat  ← PC 端 Modbus 从站（5502）
+  2. 双击 day7\upload_modbus.bat     ← 板子上传 Day7 文件（关串口监控再做）
+  3. 双击 esp32\start_serial.bat     ← 看板子日志确认 Modbus 数据
+```
+
+#### 端口/COM 冲突速查表
+
+| 资源 | 占用者 | 冲突方 | 现象 |
+|------|--------|--------|------|
+| TCP 5502 | `day1/start.bat` 或 `day7/start_modbus_sim.bat` | 另一个 | 第二个启动的会报 OSError 或 bind failed |
+| TCP 8081 | `day2/start_ui.bat` | 重复启动 | OSError: WinError 10048 通常每个套接字只允许使用一次 |
+| COM口 | `start_serial.bat` | `flash_and_upload.bat` / `upload_only.bat` / `upload_modbus.bat` | 烧录/上传脚本报 Permission denied 或 could not open port |
 
 ### 方式 2：手动命令
 

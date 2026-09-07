@@ -1,36 +1,29 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-REM ============================================================
-REM  ESP32 ä¸²å£æ—¥å¿—ç›‘æ§å¯åŠ¨è„šæœ¬
-REM  åŒå‡»è¿è¡Œå³å¯ï¼Œè‡ªåŠ¨æŸ¥æ‰¾ COM å£å¹¶è¿æ¥
-REM  æ³¢ç‰¹ç‡ 115200ï¼ŒæŒ‰ Ctrl+C é€€å‡º
-REM ============================================================
-
-echo.
-echo ============================================
-echo   ESP32 ä¸²å£æ—¥å¿—ç›‘æ§
-echo ============================================
+title ESP32 - ´®¿ÚÈÕÖ¾¼à¿Ø
+echo ========================================
+echo   ESP32 ´®¿ÚÈÕÖ¾¼à¿Ø
+echo   ²¨ÌØÂÊ: 115200
+echo   Ctrl+C ÍË³ö
+echo ========================================
 echo.
 
-REM è‡ªåŠ¨æ£€æµ‹å¯ç”¨çš„ COM å£
 set PORT=
-for /f "tokens=4 delims= " %%P in ('mode 2^>nul ^| findstr "COM"') do (
-    if "!PORT!"=="" set PORT=%%P
+set /p PORT=ÇëÊäÈë COM ¿Ú (Ö±½Ó»Ø³µ×Ô¶¯¼ì²â):
+if "!PORT!"=="" (
+    for /f "tokens=4 delims= " %%P in ('mode 2^>nul ^| findstr /i "COM"') do (
+        if "!PORT!"=="" set PORT=%%P
+    )
 )
 
-if "%PORT%"=="" (
-    echo [é”™è¯¯] æœªæ£€æµ‹åˆ° COM å£ï¼Œè¯·ç¡®è®¤ ESP32 å·²è¿æ¥
+if "!PORT!"=="" (
+    echo [´íÎó] Î´¼ì²âµ½ COM ¿Ú, ÇëÈ·ÈÏ ESP32 ÒÑÁ¬½Ó
     pause
     exit /b 1
 )
 
-echo æ£€æµ‹åˆ°ä¸²å£: %PORT%
-echo æ³¢ç‰¹ç‡:     115200
+echo Ê¹ÓÃ´®¿Ú: !PORT!
 echo.
-echo æ­£åœ¨è¿æ¥... æŒ‰ Ctrl+C é€€å‡º
-echo --------------------------------------------
-echo.
-
-python -m serial.tools.miniterm %PORT% 115200 --rts 0 --dtr 0
-
+python -m serial.tools.miniterm !PORT! 115200 --rts 0 --dtr 0
 pause

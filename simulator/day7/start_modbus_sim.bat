@@ -1,14 +1,25 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Day7 - Modbus TCP Slave Simulator (PCç«¯)
+title Day7 - Modbus TCP ´ÓÕ¾Ä£ÄâÆ÷ (PC¶Ë)
 echo ========================================
-echo   Day7 Modbus TCP ä»ç«™æ¨¡æ‹Ÿå™¨
-echo   ç”¨äºæµ‹è¯• ESP32 Modbus ç½‘å…³é‡‡é›†
-echo   ç«¯å£: 5502  ä»ç«™åœ°å€: 7
-echo   å¯„å­˜å™¨: reg0=æ¸©åº¦, reg1=æ¹¿åº¦
-echo   Ctrl+C é€€å‡º
+echo   Day7 Modbus TCP ´ÓÕ¾Ä£ÄâÆ÷
+echo   ÓÃÓÚ²âÊÔ ESP32 Modbus Íø¹Ø²É¼¯
+echo   ¶Ë¿Ú: 5502  ´ÓÕ¾µØÖ·: 7
+echo   Ctrl+C ÍË³ö
 echo ========================================
 echo.
+
+REM ¼ì²é 5502 ¶Ë¿Ú
+netstat -ano | findstr ":5502 " | findstr "LISTENING" >nul
+if !errorlevel!==0 (
+    echo [¾¯¸æ] ¶Ë¿Ú 5502 ÒÑ±»Õ¼ÓÃ, ¿ÉÄÜ Day1 Ä£ÄâÆ÷ÒÑÔÚÔËĞĞ
+    echo   ½¨Òé: ¹ØµôÆäËûÕ¼ÓÃ 5502 µÄ´°¿ÚÔÙÆô¶¯
+    echo.
+    choice /C YN /M "ÈÔÈ»Æô¶¯"
+    if !errorlevel!==2 exit /b 1
+)
+
 cd /d "%~dp0\..\tools"
 python modbus_slave_sim.py 5502 7
 pause

@@ -1,31 +1,36 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Day5 - Upload ESP32 Source Code Only (ä¸æ“¦é™¤ä¸é‡çƒ§)
+title Day5 - ½öÉÏ´« ESP32 Ô´Âë
 echo ========================================
-echo   Day5 ä»…ä¸Šä¼  ESP32 æºç 
-echo   (æ¿å­ä¸Šå·²æœ‰ MicroPython, åªæ›´æ–° .py æ–‡ä»¶)
+echo   Day5 ½öÉÏ´« ESP32 Ô´Âë
+echo   (°å×ÓÒÑÓĞ MicroPython, Ö»¸üĞÂ .py)
+echo   ×¢Òâ: Ö´ĞĞÇ°¹Ø±ÕËùÓĞ´®¿Ú¼à¿Ø´°¿Ú
 echo ========================================
 echo.
+
+set PORT=
+set /p PORT=ÇëÊäÈë COM ¿Ú (Ö±½Ó»Ø³µÄ¬ÈÏ COM5):
+if "!PORT!"=="" set PORT=COM5
+
 cd /d "%~dp0"
 set FW_DIR=esp32_firmware
 
-set /p PORT=è¯·è¾“å…¥ COM å£ (ç›´æ¥å›è½¦é»˜è®¤ COM5):
-if "%PORT%"=="" set PORT=COM5
+echo.
+echo === ÉÏ´«¹Ì¼şÔ´Âë ===
+python -m mpremote connect !PORT! cp !FW_DIR!\boot.py :/boot.py
+python -m mpremote connect !PORT! cp !FW_DIR!\app_config.py :/app_config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\relay_hw.py :/relay_hw.py
+python -m mpremote connect !PORT! cp !FW_DIR!\ap_config.py :/ap_config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\config.py :/config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\main.py :/main.py
+python -m mpremote connect !PORT! mkdir umqtt 2>nul
+python -m mpremote connect !PORT! cp !FW_DIR!\umqtt\simple.py :umqtt\simple.py
 
 echo.
-echo --- ä¸Šä¼ å›ºä»¶æºç  ---
-python -m mpremote connect %PORT% cp %FW_DIR%\boot.py :/boot.py
-python -m mpremote connect %PORT% cp %FW_DIR%\app_config.py :/app_config.py
-python -m mpremote connect %PORT% cp %FW_DIR%\relay_hw.py :/relay_hw.py
-python -m mpremote connect %PORT% cp %FW_DIR%\ap_config.py :/ap_config.py
-python -m mpremote connect %PORT% cp %FW_DIR%\main.py :/main.py
-python -m mpremote connect %PORT% cp %FW_DIR%\config.py :/config.py
-python -m mpremote connect %PORT% mkdir umqtt 2>nul
-python -m mpremote connect %PORT% cp %FW_DIR%\umqtt\simple.py :umqtt\simple.py
+echo === ÖØÆô°å×Ó ===
+python -m mpremote connect !PORT! reset
 
 echo.
-echo --- é‡å¯æ¿å­ ---
-python -m mpremote connect %PORT% reset
-echo.
-echo --- å®Œæˆ, æ¿å­å·²é‡å¯ ---
+echo --- Íê³É, °å×ÓÒÑÖØÆô ---
 pause

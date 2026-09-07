@@ -1,50 +1,62 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Day5 - ESP32 Firmware Upload & Serial Monitor
+title Day5 - ESP32 È«Á÷³ÌÉÕÂ¼
 echo ========================================
-echo   Day5 ESP32 å›ºä»¶çƒ§å½• + ä¸Šä¼  + ç›‘æ§
-echo   æµç¨‹: æ“¦é™¤ - çƒ§ MicroPython - ä¸Šä¼ æºç  - ç›‘æ§ä¸²å£
+echo   Day5 ESP32 ¹Ì¼şÉÕÂ¼ + ÉÏ´« + ¼à¿Ø
+echo   Á÷³Ì: ²Á³ı - ÉÕ MicroPython - ÉÏ´«Ô´Âë
+echo   ×¢Òâ: Ö´ĞĞÇ°¹Ø±ÕËùÓĞ´®¿Ú¼à¿Ø´°¿Ú
 echo ========================================
 echo.
+
+set PORT=
+set /p PORT=ÇëÊäÈë COM ¿Ú (Ö±½Ó»Ø³µÄ¬ÈÏ COM5):
+if "!PORT!"=="" set PORT=COM5
+
 cd /d "%~dp0"
 set FW_DIR=esp32_firmware
 
-set /p PORT=è¯·è¾“å…¥ COM å£ (å¦‚ COM5, ç›´æ¥å›è½¦é»˜è®¤ COM5):
-if "%PORT%"=="" set PORT=COM5
+REM === ¼ì²éÒÀÀµ ===
+where python >nul 2>&1
+if !errorlevel! neq 0 ( echo [´íÎó] Î´°²×° Python )
+where esptool >nul 2>&1
+if !errorlevel! neq 0 (
+    echo [ÌáÊ¾] ÕıÔÚ°²×° esptool...
+    pip install esptool mpremote pyserial
+)
 
 echo.
-echo --- [1/4] æ“¦é™¤æ—§å›ºä»¶ ---
-python -m esptool --port %PORT% erase_flash
-if errorlevel 1 (
-    echo [é”™è¯¯] æ“¦é™¤å¤±è´¥
+echo === [1/4] ²Á³ı¾É¹Ì¼ş ===
+python -m esptool --port !PORT! erase_flash
+if !errorlevel! neq 0 (
+    echo [´íÎó] ²Á³ıÊ§°Ü, ¼ì²é COM ¿ÚÊÇ·ñÕıÈ·, °å×ÓÊÇ·ñÁ¬½Ó
     pause & exit /b 1
 )
 
 echo.
-echo --- [2/4] çƒ§å½• MicroPython è§£é‡Šå™¨ ---
-python -m esptool --port %PORT% --chip esp32c3 flash_mode dio --flash_freq 40m flash_id %FW_DIR%\_firmware\ESP32_GENERIC_C3-v1.29.0.bin
-if errorlevel 1 (
-    echo [é”™è¯¯] çƒ§å½• MicroPython å¤±è´¥
+echo === [2/4] ÉÕÂ¼ MicroPython v1.29.0 ===
+python -m esptool --port !PORT! --chip esp32c3 flash_mode dio --flash_freq 40m flash_id !FW_DIR!\_firmware\ESP32_GENERIC_C3-v1.29.0.bin
+if !errorlevel! neq 0 (
+    echo [´íÎó] ÉÕÂ¼ MicroPython Ê§°Ü
     pause & exit /b 1
 )
 
 echo.
-echo --- [3/4] ä¸Šä¼ å›ºä»¶æºç  ---
-python -m mpremote connect %PORT% cp %FW_DIR%\boot.py :/boot.py
-python -m mpremote connect %PORT% cp %FW_DIR%\app_config.py :/app_config.py
-python -m mpremote connect %PORT% cp %FW_DIR%\relay_hw.py :/relay_hw.py
-python -m mpremote connect %PORT% cp %FW_DIR%\ap_config.py :/ap_config.py
-python -m mpremote connect %PORT% cp %FW_DIR%\config.py :/config.py
-python -m mpremote connect %PORT% cp %FW_DIR%\main.py :/main.py
-python -m mpremote connect %PORT% mkdir umqtt 2>nul
-python -m mpremote connect %PORT% cp %FW_DIR%\umqtt\simple.py :umqtt\simple.py
-echo   æºç ä¸Šä¼ å®Œæˆ
+echo === [3/4] ÉÏ´«¹Ì¼şÔ´Âë ===
+python -m mpremote connect !PORT! cp !FW_DIR!\boot.py :/boot.py
+python -m mpremote connect !PORT! cp !FW_DIR!\app_config.py :/app_config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\relay_hw.py :/relay_hw.py
+python -m mpremote connect !PORT! cp !FW_DIR!\ap_config.py :/ap_config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\config.py :/config.py
+python -m mpremote connect !PORT! cp !FW_DIR!\main.py :/main.py
+python -m mpremote connect !PORT! mkdir umqtt 2>nul
+python -m mpremote connect !PORT! cp !FW_DIR!\umqtt\simple.py :umqtt\simple.py
+echo   Ô´ÂëÉÏ´«Íê³É
 
 echo.
-echo --- [4/4] ä¸²å£ç›‘æ§ (Ctrl+C é€€å‡º) ---
-echo   é¢„æœŸçœ‹åˆ°: WiFi OK, MQTT å·²è¿æ¥
+echo === [4/4] ÖØÆô°å×Ó ===
+python -m mpremote connect !PORT! reset
 echo.
-python -c "import serial,time; s=serial.Serial('%PORT%',115200,timeout=1); time.sleep(2); print(s.read(s.in_waiting or 4096).decode('utf-8','replace')); s.close()"
-echo.
-echo --- å¦‚éœ€æŒç»­ç›‘æ§, åŒå‡» start_serial.bat ---
+echo --- Íê³É, °å×ÓÒÑÖØÆô ---
+echo --- Ë«»÷ upload_only.bat ¿É¿ìËÙÖ»ÉÏ´«Ô´Âë ---
 pause

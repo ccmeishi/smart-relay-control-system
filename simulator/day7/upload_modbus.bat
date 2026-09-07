@@ -1,30 +1,33 @@
 @echo off
+setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Day7 - Upload Modbus Gateway Files Only
+title Day7 - ÉÏ´« Modbus Íø¹ØÔöÁ¿ÎÄ¼ş
 echo ========================================
-echo   Day7 å¢é‡: ä¸Šä¼  Modbus ç½‘å…³ç›¸å…³æ–‡ä»¶
-echo   (ä¸æ“¦é™¤ä¸é‡çƒ§, æ¿å­ä¸Šå·²æœ‰ Day5 å›ºä»¶)
-echo   æ–°å¢: modbus_gw.py
-echo   ä¿®æ”¹: app_config.py, ap_config.py, main.py
+echo   Day7 ÔöÁ¿: ÉÏ´« Modbus Íø¹ØÏà¹ØÎÄ¼ş
+echo   ĞÂÔö: modbus_gw.py
+echo   ĞŞ¸Ä: app_config.py, ap_config.py, main.py
+echo   ×¢Òâ: Ö´ĞĞÇ°¹Ø±ÕËùÓĞ´®¿Ú¼à¿Ø´°¿Ú
 echo ========================================
 echo.
+
+set PORT=
+set /p PORT=ÇëÊäÈë COM ¿Ú (Ö±½Ó»Ø³µÄ¬ÈÏ COM5):
+if "!PORT!"=="" set PORT=COM5
+
 cd /d "%~dp0"
 
-set /p PORT=è¯·è¾“å…¥ COM å£ (ç›´æ¥å›è½¦é»˜è®¤ COM5):
-if "%PORT%"=="" set PORT=COM5
+echo.
+echo === ÉÏ´« Day7 ĞÂÔö/ĞŞ¸ÄÎÄ¼ş ===
+python -m mpremote connect !PORT! cp esp32_firmware\modbus_gw.py :/modbus_gw.py
+python -m mpremote connect !PORT! cp esp32_firmware\app_config.py :/app_config.py
+python -m mpremote connect !PORT! cp esp32_firmware\ap_config.py :/ap_config.py
+python -m mpremote connect !PORT! cp esp32_firmware\main.py :/main.py
 
 echo.
-echo --- ä¸Šä¼  Day7 æ–°å¢/ä¿®æ”¹æ–‡ä»¶ ---
-python -m mpremote connect %PORT% cp esp32_firmware\modbus_gw.py :/modbus_gw.py
-python -m mpremote connect %PORT% cp esp32_firmware\app_config.py :/app_config.py
-python -m mpremote connect %PORT% cp esp32_firmware\ap_config.py :/ap_config.py
-python -m mpremote connect %PORT% cp esp32_firmware\main.py :/main.py
+echo === ÖØÆô°å×Ó ===
+python -m mpremote connect !PORT! reset
 
 echo.
-echo --- é‡å¯æ¿å­ ---
-python -m mpremote connect %PORT% reset
-
-echo.
-echo --- å®Œæˆ, æ¿å­å·²é‡å¯ ---
-echo --- ä¸²å£åº”çœ‹åˆ°: [main] Modbus ç½‘å…³å·²å¯åŠ¨, é‡‡é›†ç‚¹: N ---
+echo --- Íê³É, °å×ÓÒÑÖØÆô ---
+echo --- ´®¿ÚÓ¦¿´µ½: Modbus Íø¹ØÒÑÆô¶¯, ²É¼¯µã: N ---
 pause
