@@ -515,6 +515,111 @@ RELAY_ACTIVE_LOW = False     # 实物测试: 高电平触发
 
 **Day7 新增卡片**：Modbus 采集配置 JSON 文本域，用户直接贴 JSON 配置。
 
+#### 📌 Day7 踩坑：ESP32-C3 时钟系统（JetLinks 更新时间 1970 之谜）
+
+**问题现象**：JetLinks 上所有属性的"更新时间"全是 `1970-01-01`，即使板子已经联网、MQTT 正常上报。
+
+**根因一层层挖**（共 4 层坑，每修一层才暴露下一层）：
+
+**坑 1：没 import `ntptime`**
+
+Day5 固件 `main.py` 里根本没有 NTP 校时代码，`now_ms() = time.time() * 1000` 返回的是板子**开机秒数**（比如 120 秒 → JetLinks 收到 `1970-01-01 00:02:00`）。
+
+修：WiFi 连上后调 `ntptime.settime()` 同步时间。
+
+**坑 2：WiFi 已连时跳过了校时**
+
+ESP32 STA 模式上电自动重连（记住了 WiFi 凭据），代码里：
+
+```python
+if _wlan.isconnected():
+    return True   # ← 直接返回，跳过了 _ntp_sync()
+```
+
+修：已连也跑 `_ntp_sync()`。
+
+**坑 3：`ntptime.settime()` 调了，但 `time.time()` 没变！（最坑）**
+
+这是 **ESP32-C3 MicroPython 的一个特性**——板子上有两个"时钟"：
+
+| 时钟 | 比喻 | 谁在管 |
+|------|------|--------|
+| `time.time()` | **秒表**（开机后从零数秒） | FreeRTOS tick counter |
+| `machine.RTC().datetime()` | **电子表**（可以调日期） | RTC 硬件 |
+
+`ntptime.settime()` 确实连了 NTP、确实更新了 RTC（电子表变成 2026-09-07），但 `time.time()` 继续从开机数——两个时钟互相不通信。
+
+解决：**偏移量方案**，把"真实 epoch - 开机秒数"差记住，每次 `now_ms()` 就加：
+
+```python
+_NTP_OFFSET = 0          # NTP 同步后赋值
+
+def _compute_epoch(dt):
+    """从 RTC datetime 自己算 Unix epoch (MicroPython 没 calendar 模块)"""
+    Y, M, D, H, Mi, S = dt[:6]
+    total_days = (Y - 1970) * 365
+    leaps = sum(1 for y in range(1970, Y)
+                if (y % 4 == 0 and y % 100 != 0) or y % 400 == 0)
+    total_days += leaps
+    days_in_month = [31,28,31,30,31,30,31,31,30,31,30,31]
+    if (Y % 4 == 0 and Y % 100 != 0) or Y % 400 == 0:
+        days_in_month[1] = 29
+    total_days += sum(days_in_month[:M-1]) + (D-1)
+    return total_days * 86400 + H*3600 + Mi*60 + S
+
+def _ntp_sync():
+    global _NTP_OFFSET
+    ntptime.host = "ntp.aliyun.com"     # 国内比 pool.ntp.org 快
+    ntptime.settime()
+    rtc_dt = machine.RTC().datetime()    # 电子表 (已被 NTP 调准)
+    real_epoch = _compute_epoch(rtc_dt)  # 从电子表算真实 epoch
+    boot_counter = int(time.time())      # 秒表 (开机秒数)
+    _NTP_OFFSET = real_epoch - boot_counter
+
+def now_ms():
+    return int((time.time() + _NTP_OFFSET) * 1000)
+```
+
+**坑 4：日历自己写 off-by-one，少了 365 天**
+
+写 `_compute_epoch` 时犯了个低级数组分配错误：
+
+```python
+# ❌ 旧: Y-1-1970 个元素, Y=2026 时只有 55 个
+DAYS_PER_YEAR = [365] * (Y - 1 - 1970)
+
+# ✅ 新: 直接算, 不靠数组
+total_days = (Y - 1970) * 365
+```
+
+差了 1 年（365 天 × 86400 秒），JetLinks 上显示 `2025-09-07`。
+
+**坑 5：`mpremote cp` 报 Up to date 实际没覆盖**
+
+`mpremote cp` 只比较文件 size，不比较内容。如果你在本地改了文件但 size 没变（或更小），它报 "Up to date" 直接跳过。修：先 `mpremote rm main.py` 再 `cp`。
+
+```powershell
+python -m mpremote connect COM5 rm main.py      # 先删板子上的
+python -m mpremote connect COM5 cp main.py :/main.py   # 再强制上传
+python -m mpremote connect COM5 reset           # 重启
+```
+
+### 时间戳验证速查
+
+板子跑起来后串口应该能看到：
+
+```
+[main] WiFi already connected, IP: 192.168.30.145
+[main] [TIME] real_epoch: 1788739596 boot: 842077xxx offset: 94666xxxx
+[main] [TIME] now_ms() => 1788739596000  local(UTC): (2026, 9, 7, 8, 7, 16)
+```
+
+- `real_epoch` 应该在 1,788,7xx,xxx 量级（2026 年）
+- `boot` 是开机秒数（~842,077,xxx，假 epoch）
+- `now_ms()` 应该 ≈ `real_epoch * 1000`
+
+如果 JetLinks 更新时间还是 1970：板子可能跑了旧 main.py → `rm + cp + reset` 强制覆盖。
+
 #### modbus_gw.py — ⭐ Day7 新增，Modbus TCP 主站 + 时间片调度
 
 这是 Day7 的核心，拆成三层：
@@ -939,6 +1044,7 @@ Topic: /relay-cc/relaycc/properties/read
 | 属性 ID 拼写错误 | 物模型属性 ID 必须和固件上报 key 完全一致 |
 | 数据类型不匹配 | relay1 是 int，temperature 带 scale 后是 double |
 | 设备会话僵死 | 断开连接 → 重启板子 |
+| 更新时间全是 **1970-01-01** | 板子没跑 NTP 校时 → 见 Day7 时钟系统那节 |
 
 ### 11.7 配网页面打不开
 
