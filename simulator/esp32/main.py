@@ -23,6 +23,7 @@ from umqtt.simple import MQTTClient
 import relay_hw
 import app_config
 import ap_config
+import modbus_gw
 
 
 class _EnterConfig(Exception):
@@ -68,8 +69,13 @@ def build_topics(cfg):
 
 
 def properties():
-    return {"relay%d" % (i + 1): (1 if s else 0)
-            for i, s in enumerate(relay_hw.states())}
+    p = {"relay%d" % (i + 1): (1 if s else 0)
+         for i, s in enumerate(relay_hw.states())}
+    # 合并 Modbus 采集到的数据 (如果有)
+    mb = modbus_gw.collected()
+    if mb:
+        p.update(mb)
+    return p
 
 
 def wifi_connect(cfg, timeout_s=20):
@@ -225,13 +231,15 @@ def mqtt_loop():
         if relay_hw.config_requested():
             raise _EnterConfig()
         _cli.check_msg()                              # 非阻塞处理下行命令
+        # Modbus 时间片采集: 每次只读一个到期的寄存器点, 不阻塞
+        modbus_gw.poll_one()
         now = time.ticks_ms()
         if time.ticks_diff(now, next_ping) >= 0:      # 保活
             _cli.ping()
             next_ping = time.ticks_add(now, 25000)
         if time.ticks_diff(now, next_check) >= 0:
             cur = properties()
-            if cur != _last_props:                    # 本地按键/远程控制引起变化
+            if cur != _last_props:                    # 本地按键/远程控制/Modbus变化
                 report()
                 _last_props = cur
             next_check = time.ticks_add(now, 5000)
@@ -249,6 +257,12 @@ def run_normal(cfg):
             _check_cfg()                              # WiFi 刚连上 → MQTT 间隙
             mqtt_connect(cfg)
             _check_cfg()                              # MQTT 刚连上 → mqtt_loop 间隙
+            # 初始化 Modbus 采集网关 (Day7)
+            if cfg.get("modbus_enabled") and cfg.get("modbus_slaves"):
+                modbus_gw.init(cfg["modbus_slaves"])
+                log("Modbus 网关已启动, 采集点:", modbus_gw.point_count())
+            else:
+                modbus_gw.close()
             backoff = 5                                # 连上后重置退避
             mqtt_loop()
         except _EnterConfig:
@@ -260,6 +274,7 @@ def run_normal(cfg):
                     _cli.disconnect()
             except Exception:
                 pass
+            modbus_gw.close()
             t0 = time.ticks_ms()
             while time.ticks_diff(time.ticks_ms(), t0) < backoff * 1000:
                 if relay_hw.config_requested():
@@ -291,6 +306,7 @@ def main():
                     _cli.disconnect()
             except Exception:
                 pass
+            modbus_gw.close()
             ap_config.run(app_config.load() or cfg)   # 阻塞, 保存后自动重启
 
 

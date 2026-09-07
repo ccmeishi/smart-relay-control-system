@@ -20,6 +20,9 @@ DEFAULTS = {
     "mqtt_pass": "123456",
     "product_id": "relay-cc",
     "device_id": "",          # 空 -> 首次加载时自动填 MAC
+    # Modbus 采集网关 (Day7): 默认关闭, 有配置才启用
+    "modbus_enabled": False,
+    "modbus_slaves": [],      # 数组, 每个元素 = {host, port, unit_id, points:[...]}
 }
 
 # 正常运行必须有的字段 (缺任何一个都视为未配网)

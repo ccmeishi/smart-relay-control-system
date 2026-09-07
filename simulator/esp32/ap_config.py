@@ -8,6 +8,7 @@
 """
 import time
 import socket
+import json
 import network
 import machine
 
@@ -48,11 +49,33 @@ def _html_form(cfg, saved=False):
     def v(k):
         return str(cfg.get(k, ""))
 
+    def checked(k):
+        return 'checked' if cfg.get(k) else ''
+
     saved_banner = (
         '<div style="background:#1b5e20;color:#fff;padding:12px;border-radius:8px;'
         'margin-bottom:14px;font-size:15px">✅ 配置已保存，设备即将重启...'
         '请把手机切回正常 WiFi</div>'
     ) if saved else ""
+
+    # Modbus 配置 JSON 文本
+    mb_slaves = cfg.get("modbus_slaves", [])
+    if mb_slaves:
+        mb_json = json.dumps(mb_slaves)
+    else:
+        mb_json = (
+            '[\n'
+            '  {\n'
+            '    "name": "sensor1",\n'
+            '    "host": "192.168.30.100",\n'
+            '    "port": 502,\n'
+            '    "unit_id": 1,\n'
+            '    "points": [\n'
+            '      {"addr": "0x0000", "key": "temperature", "period_ms": 5000, "count": 2, "type": "float_be"}\n'
+            '    ]\n'
+            '  }\n'
+            ']'
+        )
 
     return """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -66,11 +89,14 @@ h2{font-size:19px;margin:10px 0 4px}
 .card{background:#1e293b;border-radius:12px;padding:16px;margin-bottom:14px}
 .card h3{font-size:15px;margin:0 0 12px;color:#60a5fa}
 label{display:block;font-size:13px;margin:10px 0 4px;color:#cbd5e1}
-input{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #334155;
- background:#0f172a;color:#f1f5f9;font-size:15px}
+input,textarea,select{width:100%;box-sizing:border-box;padding:11px;border-radius:8px;border:1px solid #334155;
+ background:#0f172a;color:#f1f5f9;font-size:15px;font-family:inherit}
+textarea{font-family:monospace;font-size:13px;min-height:160px;resize:vertical}
 button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;color:#fff;
  font-size:17px;font-weight:bold;margin-top:8px}
 .hint{font-size:12px;color:#64748b;margin-top:14px;line-height:1.6}
+.check{display:flex;align-items:center;gap:8px;margin:12px 0}
+.check input{width:20px;height:20px}
 </style></head><body>
 <h2>🔌 继电器设备配网</h2>
 <div class="sub">设备热点: """ + AP_SSID_PREFIX + """xxxx &nbsp;|&nbsp; 配网完成后自动重启</div>
@@ -89,6 +115,19 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 <label>密码</label><input name="mqtt_pass" value='""" + v("mqtt_pass") + """'>
 <label>产品ID (productId)</label><input name="product_id" value='""" + v("product_id") + """' required>
 <label>设备ID (deviceId, 默认=MAC地址)</label><input name="device_id" value='""" + v("device_id") + """' required>
+</div>
+<div class="card">
+<h3>🔗 Modbus 采集网关 (可选)</h3>
+<div class="check">
+<input type="checkbox" name="modbus_enabled" value="1" """ + checked("modbus_enabled") + """>
+<span style="font-size:14px">启用 Modbus TCP 采集</span>
+</div>
+<label>从站配置 (JSON, 见下方格式说明)</label>
+<textarea name="modbus_slaves" placeholder='[{"host":"192.168.30.100","port":502,"unit_id":1,"points":[{"addr":"0x0000","key":"temperature","period_ms":5000,"count":2,"type":"float_be"}]}]'>""" + mb_json + """</textarea>
+<div class="hint">
+<b>数据类型 type:</b> uint16 / int16 (1寄存器), uint32 / int32 (2寄存器), float_be (2寄存器大端浮点)<br>
+<b>采集周期 period_ms:</b> 每个寄存器点可以独立设置 (毫秒), 例: 5000=5秒
+</div>
 </div>
 <button type="submit">保存并重启</button>
 </form>
@@ -165,7 +204,7 @@ def run(cfg=None):
                         break
                     body += chunk.decode("utf-8", "replace")
                 form = _parse_form(body)
-                print("[ap] 收到配置:", {k: (v if k != "wifi_pass" and k != "mqtt_pass" else "***")
+                print("[ap] 收到配置:", {k: (v if k not in ("wifi_pass", "mqtt_pass") else "***")
                                         for k, v in form.items()})
                 new_cfg = dict(cfg)              # 基于当前配置 (保留未改字段)
                 new_cfg.update({k: form.get(k, "") for k in (
@@ -175,6 +214,21 @@ def run(cfg=None):
                     new_cfg["mqtt_port"] = int(form.get("mqtt_port", "9783"))
                 except ValueError:
                     new_cfg["mqtt_port"] = 9783
+                # Modbus 配置 (Day7)
+                new_cfg["modbus_enabled"] = "modbus_enabled" in form
+                mb_raw = form.get("modbus_slaves", "").strip()
+                if mb_raw:
+                    try:
+                        mb_slaves = json.loads(mb_raw)
+                        if isinstance(mb_slaves, list):
+                            new_cfg["modbus_slaves"] = mb_slaves
+                        else:
+                            new_cfg["modbus_slaves"] = []
+                    except ValueError:
+                        print("[ap] Modbus JSON 解析失败, 忽略")
+                        new_cfg["modbus_slaves"] = []
+                else:
+                    new_cfg["modbus_slaves"] = []
                 app_config.save(new_cfg)
                 html = _html_form(new_cfg, saved=True)
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
