@@ -23,6 +23,7 @@
 """
 
 import random
+import socket
 import socketserver
 import struct
 import sys
@@ -70,6 +71,7 @@ class Handler(socketserver.BaseRequestHandler):
     def handle(self):
         print("客户端连接:", self.client_address)
         conn = self.request
+        conn.settimeout(30)                          # 30秒无报文就超时退出 (ESP32断线自动清理)
         try:
             while True:
                 tid, _pid, length, uid = struct.unpack(">HHHB", recv_exact(conn, 7))
@@ -93,10 +95,9 @@ class Handler(socketserver.BaseRequestHandler):
                         with LOCK:
                             old = REGS[addr]
                             REGS[addr] = val
-                            # 如果是继电器寄存器, 重算总电流
                             if addr in RELAY_REGS:
                                 REGS[CURRENT_REG] = recalc_current()
-                        conn.sendall(reply(tid, uid, pdu))    # 正常响应 = 回显请求
+                        conn.sendall(reply(tid, uid, pdu))
                         if addr in RELAY_REGS:
                             relay_idx = RELAY_REGS.index(addr) + 1
                             state = "开 ⚡" if val else "关 ⚪"
@@ -105,12 +106,20 @@ class Handler(socketserver.BaseRequestHandler):
                             print(f"写入寄存器 0x{addr:04X} : {old} → {val}")
                     else:
                         conn.sendall(reply(tid, uid, struct.pack(">BB", 0x86, 0x02)))
-                else:                                         # 不支持的功能码
+                else:
                     conn.sendall(reply(tid, uid, struct.pack(">BB", fc | 0x80, 0x01)))
         except (ConnectionError, OSError):
             pass
+        except socket.timeout:                      # 30秒没收到报文 → 正常清理
+            print("客户端超时:", self.client_address)
         finally:
             print("客户端断开:", self.client_address)
+
+    def finish(self):
+        try:
+            self.request.close()                    # 确保 socket 关闭
+        except Exception:
+            pass
 
 
 class Server(socketserver.ThreadingTCPServer):
@@ -125,26 +134,35 @@ def drift():
         with LOCK:
             REGS[0] = max(-100, min(600, REGS[0] + random.choice((-2, -1, 0, 1, 2))))
             REGS[1] = max(0, min(1000, REGS[1] + random.choice((-3, -1, 1, 2, 3))))
-            # 电压在 218V~222V 间微小波动 (x10 存储: 2180~2220)
             REGS[VOLTAGE_REG] = max(2180, min(2220, REGS[VOLTAGE_REG] + random.choice((-2, -1, 0, 0, 1, 2))))
 
 
 def main():
     threading.Thread(target=drift, daemon=True).start()
-    with Server(("0.0.0.0", PORT), Handler) as srv:
-        print(f"Modbus TCP 从站模拟器已启动: 0.0.0.0:{PORT} (unit_id={UNIT_ID})")
-        print(f"寄存器布局:")
-        print(f"  reg0  温度  (x10, 起始 {REGS[0]/10:.1f}°C)")
-        print(f"  reg1  湿度  (x10, 起始 {REGS[1]/10:.1f}%RH)")
-        print(f"  reg2-9 继电器1-8 (0=关/1=开)  共 {RELAY_COUNT} 路")
-        print(f"  reg10 总电流 (x10, {REGS[CURRENT_REG]/10:.1f}A, 每开一路 +0.5A)")
-        print(f"  reg11 电压  (x10, {REGS[VOLTAGE_REG]/10:.1f}V, 218~222V波动)")
-        print(f"  reg12-15 预留")
-        print("Ctrl+C 退出\n")
+    server = None
+    while True:
         try:
-            srv.serve_forever()
+            with Server(("0.0.0.0", PORT), Handler) as srv:
+                server = srv
+                print(f"Modbus TCP 从站模拟器已启动: 0.0.0.0:{PORT} (unit_id={UNIT_ID})")
+                print(f"寄存器布局:")
+                print(f"  reg0  温度  (x10, 起始 {REGS[0]/10:.1f}°C)")
+                print(f"  reg1  湿度  (x10, 起始 {REGS[1]/10:.1f}%RH)")
+                print(f"  reg2-9 继电器1-8 (0=关/1=开)  共 {RELAY_COUNT} 路")
+                print(f"  reg10 总电流 (x10, {REGS[CURRENT_REG]/10:.1f}A, 每开一路 +0.5A)")
+                print(f"  reg11 电压  (x10, {REGS[VOLTAGE_REG]/10:.1f}V, 218~222V波动)")
+                print(f"  reg12-15 预留")
+                print("Ctrl+C 退出, 异常自动重启\n")
+                srv.serve_forever()
         except KeyboardInterrupt:
-            pass
+            print("\n[Ctrl+C] 退出")
+            break
+        except OSError as e:
+            print(f"[模拟器] 服务器异常: {e}, 3秒后重启...")
+            time.sleep(3)
+        except Exception as e:
+            print(f"[模拟器] 未预期异常: {type(e).__name__}: {e}, 3秒后重启...")
+            time.sleep(3)
 
 
 if __name__ == "__main__":
