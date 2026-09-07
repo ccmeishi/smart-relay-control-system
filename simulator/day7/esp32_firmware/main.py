@@ -17,6 +17,7 @@
 import time
 import json
 import network
+import ntptime
 
 from umqtt.simple import MQTTClient
 
@@ -94,9 +95,21 @@ def wifi_connect(cfg, timeout_s=20):
         if _wlan.isconnected():
             log("WiFi OK, IP:", _wlan.ifconfig()[0])
             _check_cfg()                              # 连上瞬间也可能积压长按请求
+            _ntp_sync()
             return True
         time.sleep_ms(200)
     return _wlan.isconnected()
+
+
+def _ntp_sync():
+    """WiFi 连上后同步 NTP 时间, 让 time.time() 返回真实 Unix epoch.
+    失败不影响主流程 (静默忽略), 下次 WiFi 重连会再试."""
+    try:
+        ntptime.host = "ntp.aliyun.com"   # 默认 pool.ntp.org 在国内慢, 换阿里
+        ntptime.settime()
+        log("NTP time synced:", time.localtime()[:6])
+    except Exception as e:
+        log("NTP sync failed (non-fatal):", e)
 
 
 def _check_cfg():
