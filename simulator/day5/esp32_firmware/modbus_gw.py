@@ -228,11 +228,11 @@ class _SlaveConn:
     def _on_fail(self):
         """通信失败 -> 立即关闭 socket, 计数失败, 达阈值进冷却"""
         self.fail_count += 1
-        # 无论第几次失败都立刻 close: 留着脏 socket 下次 send/recv 还会超时, 白白浪费 1s
         self.close()
         if self.fail_count >= 3:
-            self.retry_after = time.ticks_add(time.ticks_ms(), 15000)
-            print("[modbus] %s:%d cooling down 15s" % (self.host, self.port))
+            # 冷却 3 秒: 足够让模拟器重启, 又不会让用户等太久
+            self.retry_after = time.ticks_add(time.ticks_ms(), 3000)
+            print("[modbus] %s:%d cooling down 3s" % (self.host, self.port))
 
 
 # ---------- 采集网关 ----------
