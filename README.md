@@ -949,6 +949,24 @@ Topic: /relay-cc/relaycc/properties/read
 
 ## 十二、快速启动命令速查
 
+### 方式 1：双击启动脚本（推荐）
+
+每个 dayx 文件夹里都有 start_*.bat 启动脚本，双击即可运行：
+
+| 任务 | 脚本位置 | 说明 |
+|------|---------|------|
+| Day1 温湿度模拟器 | `simulator\day1\start.bat` | Modbus TCP 从站 |
+| Day2 继电器模拟器 | `simulator\day2\start_relay.bat` | JetLinks MQTT 直连 |
+| Day2 温湿度模拟器 | `simulator\day2\start_sensor.bat` | JetLinks MQTT 直连 |
+| Day2 Web UI | `simulator\day2\start_ui.bat` | 浏览器开 http://localhost:8081 |
+| Day5 全流程烧录 | `simulator\day5\flash_and_upload.bat` | 擦除→烧 MicroPython→上传源码→监控 |
+| Day5 仅上传源码 | `simulator\day5\upload_only.bat` | 板子已有 MicroPython，只更新 .py |
+| Day7 增量上传 | `simulator\day7\upload_modbus.bat` | 上传 modbus_gw.py + 3 个修改文件 |
+| Day7 Modbus 模拟器 | `simulator\day7\start_modbus_sim.bat` | 5502 端口 unit_id=7 |
+| 串口监控 | `simulator\esp32\start_serial.bat` 或 `day7\start_serial.bat` | 自动检测 COM 口 |
+
+### 方式 2：手动命令
+
 ```powershell
 # === PC 端 ===
 # Modbus 从站模拟器
@@ -958,11 +976,9 @@ python modbus_slave_sim.py 5502 7
 # 继电器模拟器 (Day2)
 cd simulator\day2
 python relay_simulator_jl.py
-# 或双击 start_relay.bat
 
 # 继电器 Web UI
 python relay_ui.py
-# 或双击 start_ui.bat
 
 # === ESP32 固件 ===
 # 擦除旧固件
@@ -971,7 +987,7 @@ python -m esptool --port COM5 erase_flash
 # 烧录 MicroPython
 python -m esptool --port COM5 --chip esp32c3 flash_mode dio --flash_freq 40m flash_id simulator/esp32/_firmware/ESP32_GENERIC_C3-v1.29.0.bin
 
-# 上传源码
+# 上传源码 (从 simulator/esp32 目录)
 cd simulator\esp32
 python -m mpremote connect COM5 cp boot.py :/boot.py
 python -m mpremote connect COM5 cp app_config.py :/app_config.py
@@ -979,11 +995,6 @@ python -m mpremote connect COM5 cp relay_hw.py :/relay_hw.py
 python -m mpremote connect COM5 cp ap_config.py :/ap_config.py
 python -m mpremote connect COM5 cp modbus_gw.py :/modbus_gw.py
 python -m mpremote connect COM5 cp main.py :/main.py
-
-# 串口监控
-# 方式1: 双击 simulator\esp32\start_serial.bat
-# 方式2: 手动
-python -c "import serial,time; s=serial.Serial('COM5',115200,timeout=1); time.sleep(2); print(s.read(s.in_waiting or 4096).decode('utf-8','replace')); s.close()"
 
 # 板子重启
 python -m mpremote connect COM5 reset
