@@ -1,17 +1,17 @@
 @echo off
 setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
-title Day7 - 上传 Modbus 网关增量文件
+title Day7 - 上传 Modbus 网关增量
 echo ========================================
 echo   Day7 增量: 上传 Modbus 网关相关文件
 echo   新增: modbus_gw.py
-echo   修改: app_config.py, ap_config.py, main.py
-echo   注意: 执行前关闭所有串口监控窗口
+echo   修改: app_config.py  ap_config.py  main.py
+echo   注意: 执行前先关闭所有串口监控窗口
 echo ========================================
 echo.
 
 set PORT=
-set /p PORT=请输入 COM 口 (直接回车默认 COM5):
+set /p PORT=请输入 COM 口  直接回车默认 COM5:
 if "!PORT!"=="" set PORT=COM5
 
 cd /d "%~dp0"

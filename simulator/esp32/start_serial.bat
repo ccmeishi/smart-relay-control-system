@@ -10,7 +10,7 @@ echo ========================================
 echo.
 
 set PORT=
-set /p PORT=请输入 COM 口 (直接回车自动检测):
+set /p PORT=请输入 COM 口  直接回车自动检测:
 if "!PORT!"=="" (
     for /f "tokens=4 delims= " %%P in ('mode 2^>nul ^| findstr /i "COM"') do (
         if "!PORT!"=="" set PORT=%%P

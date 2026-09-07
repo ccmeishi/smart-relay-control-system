@@ -3,14 +3,13 @@ setlocal enabledelayedexpansion
 chcp 65001 >nul 2>&1
 title Day5 - 仅上传 ESP32 源码
 echo ========================================
-echo   Day5 仅上传 ESP32 源码
-echo   (板子已有 MicroPython, 只更新 .py)
-echo   注意: 执行前关闭所有串口监控窗口
+echo   Day5 仅上传 ESP32 源码  不擦不重烧
+echo   注意: 执行前先关闭所有串口监控窗口
 echo ========================================
 echo.
 
 set PORT=
-set /p PORT=请输入 COM 口 (直接回车默认 COM5):
+set /p PORT=请输入 COM 口  直接回车默认 COM5:
 if "!PORT!"=="" set PORT=COM5
 
 cd /d "%~dp0"

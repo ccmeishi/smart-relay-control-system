@@ -1015,6 +1015,43 @@ Topic: /relay-cc/relaycc/properties/read
 | TCP 8081 | `day2/start_ui.bat` | 重复启动 | OSError: WinError 10048 通常每个套接字只允许使用一次 |
 | COM口 | `start_serial.bat` | `flash_and_upload.bat` / `upload_only.bat` / `upload_modbus.bat` | 烧录/上传脚本报 Permission denied 或 could not open port |
 
+### bat 脚本报错排查
+
+如果你双击 bat 后看到一堆 `不是内部或外部命令` 的乱码报错，**99% 是 bat 文件换行符或编码问题**。本项目已修复，了解原因避免自己改坏：
+
+#### Windows bat 的两个硬性要求（其他平台无所谓）
+
+| 要求 | 正确 | 错误 | 现象 |
+|------|------|------|------|
+| **换行符必须 CRLF** | `\r\n` (0D 0A) | `\n` (0A) 只有 LF | cmd 把多行合并成一行，`set /p PORT=请输入...` 整个被当命令执行 → `'请输入' 不是内部或外部命令` |
+| **编码必须 ANSI (GBK)** | `chcp 65001` 后能正确显示 | UTF-8 无 BOM | 中文被 cmd 按 GBK 读成乱码，乱码里可能有特殊字节被当命令分隔符 → `'??????' 不是内部或外部命令` |
+
+#### 验证脚本换行符
+
+```powershell
+# 用 Python 检查 bat 是否有 LF 换行（不应该有）
+python -c "import glob; [print(('CRLF OK' if b'\r\n' in open(f,'rb').read() else '!!! LF 坏了 !!!')+' '+f) for f in glob.glob('simulator/**/*.bat', recursive=True)]"
+```
+
+输出应为全部 `CRLF OK`。如果有 `!! LF 坏了 !!`：
+
+```powershell
+# 修复：强制转 CRLF
+$content = [System.IO.File]::ReadAllText("脚本路径.bat", [System.Text.Encoding]::Default)
+$content = $content -replace "`r?`n", "`r`n"
+[System.IO.File]::WriteAllText("脚本路径.bat", $content, [System.Text.Encoding]::Default)
+```
+
+#### 其他启动报错速查
+
+| 报错现象 | 原因 | 解决 |
+|---------|------|------|
+| 双击后 cmd 一闪而过 | 脚本崩溃了 | 不要双击，先打开 cmd 再拖入 bat 执行，能看到完整错误 |
+| `'python' 不是内部或外部命令` | Python 未加 PATH | `where python` 查有没有，没有就重装勾上 Add to PATH |
+| `'mpremote'` / `'esptool'` 找不到 | 没装 | `pip install mpremote esptool pyserial` |
+| 双击没反应（窗口不弹） | 文件关联坏了或编码完全错乱 | 右键→打开方式→cmd.exe，或用 PowerShell `& "path\script.bat"` |
+| `set /p` 提示文字乱码 | 编码不是 ANSI | 转回 ANSI 或去掉中文提示 |
+
 ### 方式 2：手动命令
 
 ```powershell

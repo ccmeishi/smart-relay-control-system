@@ -9,7 +9,6 @@ echo   Ctrl+C 退出
 echo ========================================
 echo.
 
-REM 检查 8081 端口
 netstat -ano | findstr ":8081 " | findstr "LISTENING" >nul
 if !errorlevel!==0 (
     echo [警告] 端口 8081 已被占用, Web UI 可能已在运行
@@ -18,8 +17,7 @@ if !errorlevel!==0 (
 )
 
 cd /d "%~dp0"
-echo 启动后请手动打开浏览器访问 http://localhost:8081
-echo.
+echo 启动后请打开浏览器访问 http://localhost:8081
 start "" http://localhost:8081
 python relay_ui.py
 pause
