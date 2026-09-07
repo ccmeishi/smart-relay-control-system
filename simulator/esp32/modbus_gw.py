@@ -123,8 +123,8 @@ class _SlaveConn:
             self.sock = None
             self.fail_count += 1
             if self.fail_count >= 3:
-                self.retry_after = time.ticks_add(time.ticks_ms(), 30000)
-                print("[modbus] %s:%d cooling down 30s" % (self.host, self.port))
+                self.retry_after = time.ticks_add(time.ticks_ms(), 3000)
+                print("[modbus] %s:%d cooling down 3s" % (self.host, self.port))
             return False
 
     def close(self):
