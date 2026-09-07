@@ -46,11 +46,11 @@ def _compute_epoch(dt):
     """从 machine.RTC().datetime() 的结果算 Unix epoch (UTC, 秒)
     简易实现: 只处理 2020-2035 年, 足够用."""
     Y, M, D, H, Mi, S = dt[:6]
-    # 1970 到 Y-1 的整年秒数
-    DAYS_PER_YEAR = [365] * (Y - 1 - 1970)
-    # 闰年补 2 月 29 日 (被 4 整除且不是世纪年, 或被 400 整除)
+    # 1970 到 Y-1 的整年天数 (range 1970..Y-1 共 Y-1970 年)
+    total_days = (Y - 1970) * 365
+    # 闰年补 2 月 29 日
     leaps = sum(1 for y in range(1970, Y) if (y % 4 == 0 and y % 100 != 0) or y % 400 == 0)
-    total_days = sum(DAYS_PER_YEAR) + leaps
+    total_days += leaps
     # Y 年内已过的月份天数
     days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     if (Y % 4 == 0 and Y % 100 != 0) or Y % 400 == 0:
