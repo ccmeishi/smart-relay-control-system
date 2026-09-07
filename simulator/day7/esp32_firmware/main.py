@@ -18,6 +18,7 @@ import time
 import json
 import network
 import ntptime
+import machine
 
 from umqtt.simple import MQTTClient
 
@@ -35,8 +36,31 @@ def log(*args):
     print("[main]", *args)
 
 
+# NTP epoch 偏移量: ESP32-C3 MicroPython 的 time.time() 只读 boot counter,
+# 不读 RTC。NTP 同步后 machine.RTC().datetime() 有正确时间但 time.time() 没变。
+# 解法: 同步时算一下 boot time 和真实 epoch 的差值, 后续 now_ms() 加上去。
+_NTP_OFFSET = 0
+
+
+def _compute_epoch(dt):
+    """从 machine.RTC().datetime() 的结果算 Unix epoch (UTC, 秒)
+    简易实现: 只处理 2020-2035 年, 足够用."""
+    Y, M, D, H, Mi, S = dt[:6]
+    # 1970 到 Y-1 的整年秒数
+    DAYS_PER_YEAR = [365] * (Y - 1 - 1970)
+    # 闰年补 2 月 29 日 (被 4 整除且不是世纪年, 或被 400 整除)
+    leaps = sum(1 for y in range(1970, Y) if (y % 4 == 0 and y % 100 != 0) or y % 400 == 0)
+    total_days = sum(DAYS_PER_YEAR) + leaps
+    # Y 年内已过的月份天数
+    days_in_month = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+    if (Y % 4 == 0 and Y % 100 != 0) or Y % 400 == 0:
+        days_in_month[1] = 29
+    total_days += sum(days_in_month[:M - 1]) + (D - 1)
+    return total_days * 86400 + H * 3600 + Mi * 60 + S
+
+
 def now_ms():
-    return int(time.time() * 1000)
+    return int((time.time() + _NTP_OFFSET) * 1000)
 
 
 _seq = 0
@@ -85,6 +109,8 @@ def wifi_connect(cfg, timeout_s=20):
     _wlan = network.WLAN(network.STA_IF)
     _wlan.active(True)
     if _wlan.isconnected():
+        log("WiFi already connected, IP:", _wlan.ifconfig()[0])
+        _ntp_sync()       # 即使已连也跑 NTP (首次 boot 可能还没 sync)
         return True
     log("连接WiFi:", cfg["wifi_ssid"])
     _wlan.connect(cfg["wifi_ssid"], cfg.get("wifi_pass", ""))
@@ -94,7 +120,7 @@ def wifi_connect(cfg, timeout_s=20):
             raise _EnterConfig()
         if _wlan.isconnected():
             log("WiFi OK, IP:", _wlan.ifconfig()[0])
-            _check_cfg()                              # 连上瞬间也可能积压长按请求
+            _check_cfg()
             _ntp_sync()
             return True
         time.sleep_ms(200)
@@ -102,14 +128,30 @@ def wifi_connect(cfg, timeout_s=20):
 
 
 def _ntp_sync():
-    """WiFi 连上后同步 NTP 时间, 让 time.time() 返回真实 Unix epoch.
-    失败不影响主流程 (静默忽略), 下次 WiFi 重连会再试."""
+    """WiFi 连上后同步 NTP, 然后算 boot counter 和真实 epoch 的偏移量."""
+    global _NTP_OFFSET
     try:
-        ntptime.host = "ntp.aliyun.com"   # 默认 pool.ntp.org 在国内慢, 换阿里
+        ntptime.host = "ntp.aliyun.com"
         ntptime.settime()
-        log("NTP time synced:", time.localtime()[:6])
+        # ntptime.settime() 更新了 RTC 但不更新 time.time() (boot counter)
+        # 所以从 RTC datetime 算真实 epoch, 然后算 offset
+        rtc_dt = machine.RTC().datetime()
+        real_epoch = _compute_epoch(rtc_dt)
+        boot_epoch = int(time.time())       # boot counter, ~842077xxx
+        _NTP_OFFSET = real_epoch - boot_epoch
+        log("[TIME] real_epoch:", real_epoch, "boot:", boot_epoch, "offset:", _NTP_OFFSET)
+        log("[TIME] now_ms() =>", now_ms(), " local(UTC):", rtc_dt[:6])
     except Exception as e:
-        log("NTP sync failed (non-fatal):", e)
+        log("[TIME] NTP FAILED:", repr(e))
+        try:
+            ntptime.host = "pool.ntp.org"
+            ntptime.settime()
+            rtc_dt = machine.RTC().datetime()
+            real_epoch = _compute_epoch(rtc_dt)
+            _NTP_OFFSET = real_epoch - int(time.time())
+            log("[TIME] fallback OK offset:", _NTP_OFFSET)
+        except Exception as e2:
+            log("[TIME] fallback also FAILED:", repr(e2))
 
 
 def _check_cfg():
