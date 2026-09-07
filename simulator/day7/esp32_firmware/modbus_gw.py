@@ -188,19 +188,25 @@ class _SlaveConn:
             self.sock.sendall(frame)
             head = self._recv_exact(7)
             if head is None:
+                print("[modbus] write: MBAP 头超时")
                 self._on_fail()
                 return False
-            pdu = self._recv_exact(4)   # 0x06 响应 PDU 固定 4 字节: func(1)+addr(2)+val(2)
-            if pdu is None:
+            _, _, length, _unit = struct.unpack(">HHHB", head)
+            pdu_len = length - 1   # length 含 unit_id
+            pdu_resp = self._recv_exact(pdu_len)
+            if pdu_resp is None:
+                print("[modbus] write: PDU 超时 length=%d" % pdu_len)
                 self._on_fail()
                 return False
-            full = head + pdu
+            full = head + pdu_resp
             parsed = _parse_response(full, tid)
             if parsed is None:
+                print("[modbus] write: _parse_response 失败")
                 self._on_fail()
                 return False
             _uid, func, data = parsed
-            self.fail_count = 0       # 写成功也清零
+            self.fail_count = 0
+            print("[modbus] write OK tid=%d func=0x%02x addr=0x%04x val=%d" % (tid, func, addr, value))
             return func == 0x06 and len(data) >= 4
         except OSError as e:
             print("[modbus] write fail %s:%d -> %s" % (self.host, self.port, e))

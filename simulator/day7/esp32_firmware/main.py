@@ -228,7 +228,8 @@ def on_msg(topic, payload):
     mid = cmd.get("messageId", msg_id())
 
     if t == T["write"]:
-        applied = apply_props(cmd.get("properties", {}))
+        props_in = cmd.get("properties", {})
+        applied = apply_props(props_in)
         log("属性写入 ->", applied)
         send_reply(T["write_reply"], mid, {"properties": applied}, bool(applied))
         report()
