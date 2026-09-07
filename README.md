@@ -20,6 +20,8 @@ JetLinks 物联网平台（云服务器 172.16.4.211）
 你坐在电脑前看数据、点按钮控制继电器
 ```
 
+![项目总览图](项目总览图.png)
+
 ESP32 固件是中间那台"网关"，它干 3 件事：
 1. **往下**：通过 Modbus TCP 读传感器寄存器、写继电器开关
 2. **往上**：通过 MQTT 把数据上报 JetLinks、接收控制指令
@@ -56,6 +58,8 @@ pip install pymodbus paho-mqtt flask esptool mpremote pyserial
 # http://172.16.4.211  账号 admin7 / 密码见平台
 ```
 
+![开发环境](开发环境.png)
+
 ### JetLinks 连接信息速查
 
 | 项 | 值 |
@@ -84,6 +88,8 @@ pip install pymodbus paho-mqtt flask esptool mpremote pyserial
 
 ### 目标
 在电脑上跑一个 Modbus TCP 从站模拟器，模拟一个有温湿度寄存器的传感器，验证 Modbus 协议基本通信。
+
+![Day1 运行截图](day1.png)
 
 ### 运行指令
 
@@ -189,6 +195,8 @@ python relay_simulator_jl.py
 ### 目标
 用 Flask 做一个 Web 控制台，两种模式：MQTT 链路模式（走平台）和直连 Modbus 模式（直接读寄存器）。
 
+![Day3 Web UI 截图](day3.png)
+
 ### 运行指令
 
 ```powershell
@@ -223,6 +231,8 @@ python relay_ui.py
 
 ### 目标
 完成 JetLinks 平台的配置，让 PC 端模拟器能上报数据、接收指令。
+
+![Day4 JetLinks 平台](day4.jpg)
 
 ### 步骤 1：设备接入网关
 
@@ -289,6 +299,8 @@ python relay_ui.py
 - ✅ AP 配网模式（SW1 长按 6 秒触发）
 - ✅ MQTT 直连 JetLinks（断线指数退避重连）
 - ✅ 持久化配置（/config.json 原子写）
+
+![Day5 ESP32 实物](day5.jpg)
 
 ### 7.1 固件烧录
 
@@ -702,6 +714,8 @@ Day5 之前的 MQTT 直连版本，硬编码配置。
 ---
 
 ## 九、Day7：Modbus 采集网关（核心功能详解）
+
+![Day7 Modbus 网关运行](day7.jpg)
 
 ### 9.1 配置格式
 
