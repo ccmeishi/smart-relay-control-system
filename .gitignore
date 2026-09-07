@@ -16,7 +16,12 @@ env/
 .vs/
 .idea/
 .vscode/
+.trae/
 *.swp
+
+# TRAE AI 临时文件
+diag_*.txt
+diag_*.json
 
 # OS
 .DS_Store
