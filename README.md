@@ -1011,9 +1011,18 @@ Topic: /relay-cc/relaycc/properties/read
 
 | 资源 | 占用者 | 冲突方 | 现象 |
 |------|--------|--------|------|
-| TCP 5502 | `day1/start.bat` 或 `day7/start_modbus_sim.bat` | 另一个 | 第二个启动的会报 OSError 或 bind failed |
+| TCP 5502 | `day1/start.bat` 或 `day7/start_modbus_sim.bat` | 另一个 | 第二个启动的会报占用警告；脚本会显示占用进程名+PID |
 | TCP 8081 | `day2/start_ui.bat` | 重复启动 | OSError: WinError 10048 通常每个套接字只允许使用一次 |
 | COM口 | `start_serial.bat` | `flash_and_upload.bat` / `upload_only.bat` / `upload_modbus.bat` | 烧录/上传脚本报 Permission denied 或 could not open port |
+
+#### FAQ：没开过 day1 模拟器，为什么报 5502 被占用？
+
+- **不是 ESP32 实物占用**。板子是 Modbus TCP 客户端，只会主动"连出"到 PC 的 5502，自己从不监听该端口，硬件不可能占用。
+- 真正原因：**上次测试的模拟器进程还在后台跑**（cmd 窗口没关，或 python.exe 残留）。
+- 现在的启动脚本会自动查出占用者的**进程名和 PID** 并显示，例如：
+  `[警告] 端口 5502 已被占用: python.exe  PID=12832`
+- 处理：确认旧窗口不要了 → `taskkill /F /PID <显示的PID>` → 重新启动脚本。
+- 注意：模拟器绑端口时用了 `allow_reuse_address`，被占用时选"仍然启动"能成功绑上，但**两个进程会同时抢同一端口**（连接随机分配），测试结果会错乱——报占用时优先选 N 并先杀旧进程。
 
 ### bat 脚本报错排查
 
@@ -1024,7 +1033,7 @@ Topic: /relay-cc/relaycc/properties/read
 | 要求 | 正确 | 错误 | 现象 |
 |------|------|------|------|
 | **换行符必须 CRLF** | `\r\n` (0D 0A) | `\n` (0A) 只有 LF | cmd 把多行合并成一行，`set /p PORT=请输入...` 整个被当命令执行 → `'请输入' 不是内部或外部命令` |
-| **编码必须 ANSI (GBK)** | `chcp 65001` 后能正确显示 | UTF-8 无 BOM | 中文被 cmd 按 GBK 读成乱码，乱码里可能有特殊字节被当命令分隔符 → `'??????' 不是内部或外部命令` |
+| **编码必须 ANSI (GBK)** | 用系统默认代码页 936，**不要写 chcp** | UTF-8 无 BOM，或 GBK 文件里加 `chcp 65001` | GBK 中文被按 UTF-8 解释 → 全屏 `????` 乱码 |
 
 #### 验证脚本换行符
 
