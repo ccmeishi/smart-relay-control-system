@@ -24,7 +24,7 @@ if !errorlevel! neq 0 (echo [ERROR] erase failed & pause & exit /b 1)
 
 echo.
 echo === [2/4] Flash MicroPython (esptool v5) ===
-python -m esptool --port COM!PORT! --chip esp32c3 --baud 460800 --flash-mode dio --flash-freq 40m write-flash 0x0 "!SRC!\_firmware\ESP32_GENERIC_C3-v1.29.0.bin"
+python -m esptool --port COM!PORT! --chip esp32c3 --baud 460800 write-flash --flash-mode dio --flash-freq 40m 0x0 "!SRC!\_firmware\ESP32_GENERIC_C3-v1.29.0.bin"
 if !errorlevel! neq 0 (echo [ERROR] flash failed & pause & exit /b 1)
 
 echo.
