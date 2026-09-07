@@ -724,6 +724,74 @@ class ModbusGateway:
 # 启动瞬间天然错开，避免同时爆发
 ```
 
+#### 📌 Day7 新增：JetLinks 下发属性 → 写 Modbus 从站寄存器
+
+**为什么要加这个**：Day1-4 PC 模拟器时 JetLinks 下发温湿度能生效，是因为模拟器自己存 json 文件、自己改。ESP32 固件里温湿度是"读"Modbus 来的——ESP32 本身不"持有"温度值，之前 JetLinks 下发 `temperature: 26` 时 `apply_props` 里写着 `if not k.startswith("relay"): continue`，**所有非 relay key 直接跳过**。
+
+**实现链路**：
+
+```
+JetLinks 编辑 temperature=26
+    ↓ MQTT /properties/write: {"properties": {"temperature": 26}}
+main.py on_msg → apply_props
+    │ relay1~4 → relay_hw.set()         (GPIO)
+    │ temperature → modbus_gw.write()    (Modbus 0x06) ← 新增!
+    ↓
+modbus_gw.py _write_info["temperature"]
+    = {conn, unit_id=7, addr=0x0000, scale=0.1}
+    reg_val = round(26.0 / 0.1) = 260   ← scale 反向换算
+    ↓
+Modbus TCP 功能码 0x06: 写 0x0000 = 260
+    ↓
+PC 模拟器 REGS[0] = 260 → 温度 = 26.0°C
+    ↓
+模拟器 drift() 在 260 附近继续小漂 (模拟真实设备)
+ESP32 poll_one 下次读 → 25.8 → 26.1 → 26.3 → ...
+```
+
+**modbus_gw.py write 相关数据结构**：
+```python
+# 初始化时为每个带 key 的采集点建反向映射
+self._write_info[pkey] = {
+    "conn": conn,
+    "unit_id": unit_id,
+    "addr": addr,
+    "scale": scale,
+}
+
+# JetLinks 下发 → 查表 → 写寄存器
+def ModbusGateway.write(self, key, value):
+    info = self._write_info[key]
+    reg_val = int(round(value / info["scale"]))   # 反向: 用户值 → 寄存器值
+    return info["conn"].write_holding(info["unit_id"], info["addr"], reg_val)
+```
+
+**main.py apply_props 扩展**：
+```python
+# Day7 之前: 只处理 relay 开头的 key
+if not k.startswith("relay"): continue
+
+# Day7 之后: 非 relay key 尝试写 Modbus
+else:
+    if modbus_gw.supports_write(k):
+        if modbus_gw.write(k, float(v)):
+            applied[k] = float(v)
+```
+
+**main.py invoke 功能调用也支持**（JetLinks"产品功能"面板）：
+```python
+# functionId = "set_temp", inputs = {"temperature": 26}
+elif fid in ("set_temp", "set_temperature", "set_modbus"):
+    value = params.get("temperature", params.get("温度", params.get("目标温度")))
+    modbus_gw.write("temperature", float(value))
+
+# functionId = "set_humidity" / "set_hum"
+elif fid in ("set_humidity", "set_hum"):
+    modbus_gw.write("humidity", float(value))
+```
+
+参数名兼容：支持 `temperature` / `温度` / `temp` / `目标温度` 四种写法，JetLinks 物模型里叫英文或中文都行。
+
 #### main.py — 主循环整合
 
 ```python
@@ -896,10 +964,82 @@ JetLinks 物模型属性类型必须选 **double(双精度浮点)**，否则小�
 | 6 | 数据上报合并 | 上报 payload 同时包含 relay1~4 和 temperature/humidity |
 | 7 | 非阻塞 | 采集持续运行时按键和 MQTT 指令无延迟 |
 | 8 | scale 生效 | 串口日志里 temperature 是 26.6 不是 266 |
-| 9 | 冷却机制 | 关闭模拟器，日志出现"进入 30 秒冷却"且不再阻塞 |
+| 9 | 冷却机制 | 关闭模拟器，日志出现"进入 3 秒冷却"且不再阻塞 |
 | 10 | 配网改配置 | AP 模式改 Modbus JSON → 重启生效 |
+| 11 | **JetLinks 下发温湿度** | 属性编辑面板改 temperature=26 → 模拟器日志出现 `写入寄存器 0x0000 : xxx → 260` → 板子日志出现 `write OK` → JetLinks 显示新值 |
+| 12 | **产品功能调用** | 物模型加 `set_temp` / `set_humidity` 功能 → 功能调用面板输入值 → 同 #11 效果 |
 
-### 9.6 串口日志对照
+### 9.6 JetLinks 产品功能配置（可选但推荐）
+
+Day7 新增了 `set_temp` / `set_humidity` 功能调用支持，在 JetLinks 产品物模型里添加：
+
+**功能 1：设置温度**
+| 字段 | 值 |
+|------|-----|
+| 功能 ID | `set_temp` |
+| 名称 | 设置温度 |
+| 输入参数 | 名字 `temperature` 或 `温度`，类型 double |
+
+**功能 2：设置湿度**
+| 字段 | 值 |
+|------|-----|
+| 功能 ID | `set_humidity` |
+| 名称 | 设置湿度 |
+| 输入参数 | 名字 `humidity` 或 `湿度`，类型 double |
+
+固件兼容 4 种参数名（`temperature` / `温度` / `temp` / `目标温度`），叫哪个都行。
+
+### 9.7 模拟器稳定性改进
+
+Day7 模拟器 `modbus_slave_sim.py` 两次迭代后变得稳定：
+
+| 问题 | 修复 |
+|------|------|
+| **无 socket timeout** → 断线后线程泄漏 → 进程 OOM 崩溃 | `conn.settimeout(30)` + `socket.timeout` 捕获 → 30s 无报文自动清理 |
+| **无服务异常恢复** → 任何 OS 异常直接死进程 | 外层 `while True + try/except OSError` → 3 秒后自动重启 |
+| **冷却 30 秒太长** → 用户关开模拟器后等太久 | 从 15s → **3s**（足够模拟器重启，用户可接受） |
+
+### 9.8 JetLinks 时间戳显示 8 小时差
+
+JetLinks 显示时间比实际时间**少 8 小时**（比如板子 UTC epoch 正确，但 JetLinks 渲染成 UTC 时间而不是北京时间）——**这不是固件问题**。
+
+根因：JetLinks 服务器/Docker 容器时区没设 `Asia/Shanghai`，它把 UTC epoch 直接按 UTC 格式渲染。
+
+解决：
+```yaml
+# docker-compose.yml 加
+environment:
+  - TZ=Asia/Shanghai
+# 或进容器手动
+ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+```
+
+固件上报的是 **正确 UTC Unix epoch 毫秒**（`1788739645000` = 2026-09-07 08:07:25 北京时间），符合 MQTT 协议规范——平台负责时区转换。
+
+### 9.9 常见踩坑：关模拟器重开后 JetLinks 超时
+
+完整的因果链：
+```
+你关模拟器窗口 → 进程消失
+    ↓
+板子 poll Modbus → ECONNREFUSED/RESET
+    ↓
+fail_count 累加: 1 → 2 → 3
+    ↓
+_on_fail() → retry_after = now + 3s → 进入冷却
+    ↓
+你重新开模拟器 → 5502 LISTENING ✅
+    ↓
+但板子还在冷却！poll_one 跳过所有点 → 不上报 → JetLinks 显示 --
+    ↓
+等 3 秒冷却到期后自动恢复
+```
+
+解决：
+1. 冷却已从 15s → 3s，最多等 3 秒
+2. 如果还嫌长，板子 reboot 也会清掉冷却状态
+
+### 9.10 串口日志对照
 
 | 日志行 | 含义 | 状态 |
 |--------|------|------|
