@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day2 - Relay Web UI
 echo ========================================
 echo   Day2 ¼ÌµçÆ÷ Web UI

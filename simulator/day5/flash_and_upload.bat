@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day5 - ESP32 全流程烧录
 echo ========================================
 echo   Day5 ESP32 擦除 + 烧录 + 上传源码

@@ -1,5 +1,4 @@
 @echo off
-chcp 65001 >nul 2>&1
 title Modbus TCP Slave (unit_id=7)
 echo ========================================
 echo   Modbus TCP Slave Simulator - Group 7

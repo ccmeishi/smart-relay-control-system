@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day2 - Sensor Simulator JetLinks
 echo ========================================
 echo   Day2 温湿度模拟器 JetLinks 格式

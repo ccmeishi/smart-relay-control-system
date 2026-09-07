@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title ESP32 - 串口日志监控
 echo ========================================
 echo   ESP32 串口日志监控

@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day7 - Modbus TCP 从站模拟器
 echo ========================================
 echo   Day7 Modbus TCP 从站模拟器 PC端

@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day5 - 仅上传 ESP32 源码
 echo ========================================
 echo   Day5 仅上传 ESP32 源码  不擦不重烧

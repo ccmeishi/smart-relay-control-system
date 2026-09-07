@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day1 - Sensor Simulator Modbus TCP Slave
 echo ========================================
 echo   Day1 ÎÂÊª¶ÈÄ£ÄâÆ÷

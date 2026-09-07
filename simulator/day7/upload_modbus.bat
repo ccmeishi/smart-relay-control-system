@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day7 - 上传 Modbus 网关增量
 echo ========================================
 echo   Day7 增量: 上传 Modbus 网关相关文件

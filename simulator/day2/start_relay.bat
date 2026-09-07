@@ -1,6 +1,5 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul 2>&1
 title Day2 - Relay Simulator JetLinks
 echo ========================================
 echo   Day2 继电器模拟器 JetLinks 直连
