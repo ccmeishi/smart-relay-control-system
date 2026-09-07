@@ -107,19 +107,24 @@ class _SlaveConn:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(self.timeout)
+            # 启用 TCP keepalive: 让操作系统自动探测死链, 避免半开连接堆积
+            # MicroPython socket.setsockopt 支持 SO_KEEPALIVE=1
+            try:
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            except Exception:
+                pass  # 某些板子的 MicroPython 不支持, 忽略
             s.connect((self.host, self.port))
             self.sock = s
             self.fail_count = 0
             self.retry_after = 0
             return True
         except OSError as e:
-            print("[modbus] 连接失败 %s:%d -> %s" % (self.host, self.port, e))
+            print("[modbus] connect fail %s:%d -> %s" % (self.host, self.port, e))
             self.sock = None
             self.fail_count += 1
             if self.fail_count >= 3:
-                # 连续失败 3 次, 进入 30 秒冷却, 避免主循环被反复阻塞
                 self.retry_after = time.ticks_add(time.ticks_ms(), 30000)
-                print("[modbus] %s:%d 进入 30 秒冷却" % (self.host, self.port))
+                print("[modbus] %s:%d cooling down 30s" % (self.host, self.port))
             return False
 
     def close(self):
@@ -183,12 +188,13 @@ class _SlaveConn:
         return buf
 
     def _on_fail(self):
+        """通信失败 -> 立即关闭 socket, 计数失败, 达阈值进冷却"""
         self.fail_count += 1
-        # 单次通信失败也进入冷却 (快速恢复, 避免重连风暴)
+        # 无论第几次失败都立刻 close: 留着脏 socket 下次 send/recv 还会超时, 白白浪费 1s
+        self.close()
         if self.fail_count >= 3:
-            self.close()
             self.retry_after = time.ticks_add(time.ticks_ms(), 15000)
-            print("[modbus] %s:%d 进入 15 秒冷却" % (self.host, self.port))
+            print("[modbus] %s:%d cooling down 15s" % (self.host, self.port))
 
 
 # ---------- 采集网关 ----------
@@ -277,6 +283,8 @@ class ModbusGateway:
                 if best.get("scale") is not None:
                     val = round(val * best["scale"], 2)
                 self.values[best["key"]] = val
+                # 成功 -> 清除失败计数, 让之前的瞬断不再污染状态
+                conn.fail_count = 0
                 print("[modbus] %s = %s (addr=%s, type=%s)" % (
                     best["key"], val, hex(best["addr"]), best["type"]))
         # 安排下一次采集
@@ -302,8 +310,10 @@ _gw_instance = None
 
 
 def init(slaves_cfg):
-    """初始化全局网关实例"""
+    """初始化全局网关实例. 若已有实例则先 close 旧连接, 防止多条 socket 堆积."""
     global _gw_instance
+    if _gw_instance is not None:
+        _gw_instance.close_all()
     _gw_instance = ModbusGateway(slaves_cfg)
     return _gw_instance
 
