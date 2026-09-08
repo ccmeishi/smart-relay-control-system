@@ -2,8 +2,20 @@
 exec 共享全局命名空间, main.py 可直接使用 _cli / _TOPICS
 """
 import time, json, network, os, sys
+from machine import Pin
 
 print("BOOT v12 start")
+
+# ---------- 0. 复位时按住任意按键 -> 强制进入配网模式 ----------
+BTN_GPIOS = [10, 9, 6, 8]
+_btn_pins = [Pin(g, Pin.IN, Pin.PULL_UP) for g in BTN_GPIOS]
+time.sleep_ms(50)  # 等电平稳定
+_force_config = any(p.value() == 0 for p in _btn_pins)
+if _force_config:
+    print("  检测到按键按下, 强制进入配网模式...")
+    import ap_config
+    ap_config.run(None)
+    sys.exit()
 
 # ---------- 1. config.json ----------
 try:
