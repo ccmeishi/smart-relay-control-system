@@ -534,8 +534,7 @@ def main():
     init_db()
     refresh_routing(force=True)
 
-    from db import list_scene_rules, get_alarm_stats
-    scene_stats = get_alarm_stats() if False else None  # 占位避免未使用告警
+    from db import list_scene_rules
     rules = list_scene_rules(enabled_only=True)
 
     print("=" * 60)

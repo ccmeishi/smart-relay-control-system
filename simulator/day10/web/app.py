@@ -38,6 +38,7 @@ from db import (
     get_scene_rule_stats,
     ACTION_LABELS, LEVEL_LABELS, LEVEL_COLORS,
     VALID_OPERATORS, VALID_LEVELS, VALID_ACTIONS,
+    _RE_USER, _RE_PASS,
 )
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -295,7 +296,6 @@ def users_add():
         password = request.form["password"].strip()
         role = request.form.get("role", "user")
         display_name = request.form.get("display_name", "").strip()
-        from db import _RE_USER, _RE_PASS
         if not _RE_USER.match(username):
             flash("用户名格式不合法 (仅字母数字下划线, 3-20 位)", "error")
             return redirect(url_for("users_list"))
@@ -332,7 +332,6 @@ def users_role(uid):
 def users_password(uid):
     try:
         password = request.form.get("password", "").strip()
-        from db import _RE_PASS
         if not _RE_PASS.match(password):
             flash("密码格式不合法 (至少 6 位可打印 ASCII)", "error")
             return redirect(url_for("users_list"))
@@ -720,12 +719,11 @@ def scenes_toggle(rid):
 @app.route("/alarms")
 @login_required
 def alarms_list():
-    status = request.args.get("status", "")
-    level = request.args.get("level", "")
-    if status and status not in ("active", "acknowledged", "cleared"):
-        status = ""
-    if level and level not in VALID_LEVELS:
-        level = ""
+    # 用独立变量保存过滤后的值, 不修改原始入参 (避免反模式)
+    raw_status = request.args.get("status", "")
+    raw_level = request.args.get("level", "")
+    status = raw_status if raw_status in ("active", "acknowledged", "cleared") else ""
+    level = raw_level if raw_level in VALID_LEVELS else ""
     alarms = list_alarms(status=status or None, level=level or None, limit=200)
     stats = get_alarm_stats()
     return render_template("alarms.html", alarms=alarms, stats=stats,
@@ -783,9 +781,16 @@ def alarms_clear_all():
 @admin_required
 def alarms_test():
     """手动触发一条测试告警 (验证告警链路)"""
+    level = request.form.get("level", "info")
+    message = request.form.get("message", "手动测试告警").strip()
+    # 前置校验: 非法 level 直接拒绝, 不进入 db 层
+    if level not in VALID_LEVELS:
+        flash(f"非法告警级别 '{level}', 只允许 {list(VALID_LEVELS)}", "error")
+        return redirect(url_for("alarms_list"))
+    if not message:
+        flash("告警消息不能为空", "error")
+        return redirect(url_for("alarms_list"))
     try:
-        level = request.form.get("level", "info")
-        message = request.form.get("message", "手动测试告警").strip()
         create_alarm(rule_id=None, rule_name="手动测试",
                      source_key="test", source_value="0",
                      level=level, message=message)

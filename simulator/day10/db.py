@@ -26,7 +26,7 @@ from contextlib import contextmanager
 _RE_KEY = re.compile(r'^[a-z0-9_]{1,40}$')      # gateway_key: relay1 / temperature
 _RE_ID  = re.compile(r'^[a-z0-9-]{1,40}$')       # product_id / device_id: lock-cc / lock001
 _RE_PROP = re.compile(r'^[a-z0-9_]{1,40}$')      # property_name: switch / temperature
-_RE_DESC = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff ]{0,100}$')  # description: 允许中文
+_RE_DESC = re.compile(r'^[a-zA-Z0-9_ ,.!?;:\'"()\-\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2000-\u206f\u00b7]{0,100}$')  # description: 允许中文+常用中英标点
 _RE_USER = re.compile(r'^[a-zA-Z0-9_]{3,20}$')    # username
 _RE_PASS = re.compile(r'^[\x20-\x7e]{6,64}$')     # password (可打印 ASCII)
 _RE_NAME = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff]{0,30}$')    # display_name
@@ -603,7 +603,7 @@ def _validate_rule_fields(name, trigger_key, trigger_operator, trigger_value,
     try:
         cooldown_sec = max(0, int(cooldown_sec))
     except (ValueError, TypeError):
-        cooldown_sec = 60
+        raise ValueError("冷却时间必须是整数 (秒)")
     if action_target:
         _validate("action_target", action_target, _RE_KEY, "动作目标")
     if action_value:
@@ -689,7 +689,7 @@ def update_scene_rule(rule_id, **kwargs):
         try:
             kwargs["cooldown_sec"] = max(0, int(kwargs["cooldown_sec"]))
         except (ValueError, TypeError):
-            kwargs["cooldown_sec"] = 60
+            raise ValueError("冷却时间必须是整数 (秒)")
         fields.append("cooldown_sec=?"); values.append(kwargs["cooldown_sec"])
     if "enabled" in kwargs:
         fields.append("enabled=?"); values.append(1 if kwargs["enabled"] else 0)
@@ -737,13 +737,9 @@ def evaluate_scene_rules(gateway_key, value) -> list:
                 # SQLite TIMESTAMP 用 UTC, 转成 epoch 比较
                 lt_str = rule["last_triggered"]
                 try:
-                    # 格式: YYYY-MM-DD HH:MM:SS (UTC)
-                    lt_struct = time.strptime(lt_str, "%Y-%m-%d %H:%M:%S")
-                    lt_epoch = time.mktime(time.gmtime()) - (time.mktime(time.localtime()) - time.mktime(time.gmtime()))
-                    # 更简单: 直接用 datetime
+                    # SQLite CURRENT_TIMESTAMP 是 UTC, 按 UTC 解析成 epoch
                     import datetime
                     dt = datetime.datetime.strptime(lt_str, "%Y-%m-%d %H:%M:%S")
-                    # SQLite CURRENT_TIMESTAMP 是 UTC, 这里按 UTC 解析
                     lt_epoch = (dt - datetime.datetime(1970, 1, 1)).total_seconds()
                     elapsed = now_ts - lt_epoch
                     if elapsed < rule["cooldown_sec"]:
