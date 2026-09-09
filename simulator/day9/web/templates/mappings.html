@@ -73,7 +73,8 @@
   </table>
 </div>
 
-<!-- ========== 新增映射弹窗 ========== -->
+<!-- ========== 新增映射弹窗 (仅 admin) ========== -->
+{% if current_user and current_user.role == 'admin' %}
 <div class="modal-overlay" id="addModal">
   <div class="modal">
     <div class="modal-header">
@@ -124,7 +125,7 @@
   </div>
 </div>
 
-<!-- ========== 编辑映射弹窗 ========== -->
+<!-- ========== 编辑映射弹窗 (仅 admin) ========== -->
 <div class="modal-overlay" id="editModal">
   <div class="modal">
     <div class="modal-header">
@@ -169,6 +170,7 @@
     </form>
   </div>
 </div>
+{% endif %}
 
 {% endblock %}
 

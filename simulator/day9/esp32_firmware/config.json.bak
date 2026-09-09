@@ -1,5 +1,5 @@
 {
-  "wifi_ssid": "TestWiFi",
+  "wifi_ssid": "Office-WiFi",
   "wifi_pass": "yh82922868",
   "mqtt_host": "172.16.4.211",
   "mqtt_port": 9783,
@@ -17,7 +17,7 @@
         {
           "addr": 0,
           "key": "temperature",
-          "period_ms": 3000,
+          "period_ms": 5000,
           "type": "uint16",
           "scale": 0.1,
           "count": 1,
@@ -26,9 +26,27 @@
         {
           "addr": 1,
           "key": "humidity",
-          "period_ms": 3000,
+          "period_ms": 6000,
           "type": "uint16",
           "scale": 0.1,
+          "count": 1,
+          "write": false
+        },
+        {
+          "addr": 4,
+          "key": "human",
+          "period_ms": 3000,
+          "type": "uint16",
+          "scale": 1.0,
+          "count": 1,
+          "write": false
+        },
+        {
+          "addr": 5,
+          "key": "smoke",
+          "period_ms": 3000,
+          "type": "uint16",
+          "scale": 1.0,
           "count": 1,
           "write": false
         }

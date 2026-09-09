@@ -3,70 +3,70 @@
 {% block page_title %}首页 / 看板{% endblock %}
 {% block content %}
 
-<!-- 统计卡片 -->
+<!-- 统计卡片 (可点击跳转) -->
 <div class="stats-grid">
-  <div class="stat-card blue">
+  <a href="{{ url_for('mappings_list') }}" class="stat-card blue" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">设备映射总数</div>
       <div class="stat-icon-box blue">{{ svg('link') }}</div>
     </div>
     <div class="stat-value">{{ total_mappings }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">点击查看详情 →</div>
+  </a>
 
-  <div class="stat-card green">
+  <a href="{{ url_for('mappings_list') }}" class="stat-card green" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">已启用映射</div>
       <div class="stat-icon-box green">{{ svg('activity') }}</div>
     </div>
     <div class="stat-value">{{ enabled_count }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">点击查看详情 →</div>
+  </a>
 
-  <div class="stat-card purple">
+  <a href="{{ url_for('mappings_list') }}" class="stat-card purple" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">虚拟产品数</div>
       <div class="stat-icon-box purple">{{ svg('layers') }}</div>
     </div>
     <div class="stat-value">{{ product_stats|length }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">点击查看详情 →</div>
+  </a>
 
-  <div class="stat-card cyan">
+  <a href="{{ url_for('devices_console') }}" class="stat-card cyan" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">虚拟设备实例</div>
       <div class="stat-icon-box cyan">{{ svg('cpu') }}</div>
     </div>
     <div class="stat-value">{{ virtual_device_count }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">点击查看实物 →</div>
+  </a>
 
-  <div class="stat-card orange">
+  <a href="{{ url_for('users_list') if current_user and current_user.role == 'admin' else '#' }}" class="stat-card orange" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">平台用户</div>
       <div class="stat-icon-box orange">{{ svg('users') }}</div>
     </div>
     <div class="stat-value">{{ user_count }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">{% if current_user and current_user.role == 'admin' %}点击管理 →{% else %}仅管理员可管理{% endif %}</div>
+  </a>
 
-  <div class="stat-card green">
+  <a href="{{ url_for('sessions_list') if current_user and current_user.role == 'admin' else '#' }}" class="stat-card green" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">在线用户</div>
       <div class="stat-icon-box green">{{ svg('activity') }}</div>
     </div>
     <div class="stat-value">{{ online_count }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">{% if current_user and current_user.role == 'admin' %}点击追踪 →{% else %}仅管理员可查看{% endif %}</div>
+  </a>
 
-  <div class="stat-card red">
+  <a href="{{ url_for('config_points') }}" class="stat-card red" style="text-decoration:none;color:inherit;cursor:pointer;">
     <div class="stat-header">
       <div class="stat-label">网关采集点</div>
       <div class="stat-icon-box red">{{ svg('globe') }}</div>
     </div>
     <div class="stat-value">{{ gateway_keys|length }}</div>
-    <div class="stat-trend">实时统计</div>
-  </div>
+    <div class="stat-trend">点击查看配置 →</div>
+  </a>
 </div>
 
 <!-- 中部图表区 -->

@@ -17,6 +17,7 @@ import os
 import sys
 import json
 import time
+import re
 import threading
 from functools import wraps
 
@@ -294,12 +295,22 @@ def users_list():
 @admin_required
 def users_add():
     try:
-        add_user(
-            username=request.form["username"].strip(),
-            password=request.form["password"].strip(),
-            role=request.form.get("role", "user"),
-            display_name=request.form.get("display_name", "").strip(),
-        )
+        username = request.form["username"].strip()
+        password = request.form["password"].strip()
+        role = request.form.get("role", "user")
+        display_name = request.form.get("display_name", "").strip()
+        # 校验
+        from db import _RE_USER, _RE_PASS, _RE_ROLE
+        if not _RE_USER.match(username):
+            flash(f"用户名格式不合法 (仅字母数字下划线, 3-20 位)", "error")
+            return redirect(url_for("users_list"))
+        if not _RE_PASS.match(password):
+            flash(f"密码格式不合法 (至少 6 位可打印 ASCII)", "error")
+            return redirect(url_for("users_list"))
+        if role not in ("admin", "user"):
+            flash("角色必须是 admin 或 user", "error")
+            return redirect(url_for("users_list"))
+        add_user(username=username, password=password, role=role, display_name=display_name)
         flash("用户创建成功", "success")
     except Exception as e:
         flash(f"创建失败: {e}", "error")
@@ -310,7 +321,11 @@ def users_add():
 @admin_required
 def users_role(uid):
     try:
-        update_user_role(uid, request.form.get("role", "user"))
+        role = request.form.get("role", "user")
+        if role not in ("admin", "user"):
+            flash("角色必须是 admin 或 user", "error")
+            return redirect(url_for("users_list"))
+        update_user_role(uid, role)
         flash("角色已更新", "success")
     except Exception as e:
         flash(f"更新失败: {e}", "error")
@@ -321,7 +336,12 @@ def users_role(uid):
 @admin_required
 def users_password(uid):
     try:
-        reset_password(uid, request.form.get("password", "").strip())
+        password = request.form.get("password", "").strip()
+        from db import _RE_PASS
+        if not _RE_PASS.match(password):
+            flash("密码格式不合法 (至少 6 位可打印 ASCII)", "error")
+            return redirect(url_for("users_list"))
+        reset_password(uid, password)
         flash("密码已重置", "success")
     except Exception as e:
         flash(f"重置失败: {e}", "error")
@@ -549,7 +569,34 @@ def config_points():
                 config_data = json.load(f)
         except Exception as e:
             flash(f"读取 config.json 失败: {e}", "error")
-    return render_template("config_points.html", config=config_data, config_path=config_path)
+
+    # 普通用户: 对原始 JSON 卡片做密码脱敏 (编辑表单本身已包在 admin 条件里)
+    is_admin = current_user_is_admin()
+    safe_json = None
+    if config_data and not is_admin:
+        # 深拷贝脱敏
+        import copy
+        safe_cfg = copy.deepcopy(config_data)
+        for key in ("wifi_pass", "mqtt_pass"):
+            if key in safe_cfg and safe_cfg[key]:
+                safe_cfg[key] = "******"
+        safe_json = json.dumps(safe_cfg, indent=2, ensure_ascii=False)
+    elif config_data:
+        safe_json = json.dumps(config_data, indent=2, ensure_ascii=False)
+
+    return render_template(
+        "config_points.html",
+        config=config_data,
+        config_path=config_path,
+        is_admin=is_admin,
+        safe_json=safe_json,
+    )
+
+
+def current_user_is_admin():
+    """检查当前登录用户是否为管理员"""
+    sess = session.get("user")
+    return sess is not None and sess.get("role") == "admin"
 
 
 @app.route("/config-points/save", methods=["POST"])
@@ -583,23 +630,19 @@ def config_points_save():
         config["product_id"] = request.form.get("product_id", config.get("product_id", ""))
 
         # Modbus 采集点
-        # 表单字段: slave_{i}_addr_{j}, slave_{i}_key_{j}, ...
+        # 表单字段: slave_{i}_addr_{j}, slave_{i}_period_ms_{j} (注意 period_ms 含下划线)
         modbus_slaves = config.get("modbus_slaves", [])
-        # 收集已提交的采集点: 以 slave_N_addr_M 为标识
+        # 收集已提交的采集点: 用正则精确匹配避免 period_ms 被 split 拆开
+        _FIELD_RE = re.compile(r'^slave_(\d+)_(addr|key|period_ms|type|scale|count|write)_(\d+)$')
         submitted = {}
         for key, value in request.form.items():
-            if not key.startswith("slave_"):
+            m = _FIELD_RE.match(key)
+            if not m:
                 continue
-            parts = key.split("_")  # e.g. slave_0_addr_0
-            # slave_{i}_{field}_{j}
-            if len(parts) >= 4:
-                try:
-                    s_idx = int(parts[1])
-                    field = parts[2]
-                    p_idx = int(parts[3])
-                except ValueError:
-                    continue
-                submitted.setdefault(s_idx, {}).setdefault(p_idx, {})[field] = value
+            s_idx = int(m.group(1))
+            field = m.group(2)
+            p_idx = int(m.group(3))
+            submitted.setdefault(s_idx, {}).setdefault(p_idx, {})[field] = value
 
         # 按 slave 重建 points
         for s_idx, points_dict in submitted.items():

@@ -285,13 +285,18 @@
 </div>
 {% endif %}
 
-<!-- 原始 JSON (始终可见) -->
+<!-- 原始 JSON (始终可见, 普通用户密码已脱敏) -->
 <div class="card" style="margin-top:24px;">
   <div class="card-header">
     <div class="card-title">{{ svg('layers') }}原始配置 (JSON)</div>
     <button class="btn btn-secondary btn-sm" onclick="copyJson()">复制</button>
   </div>
-  <pre class="config-json" id="jsonBlock">{{ config | tojson(indent=2) }}</pre>
+  <pre class="config-json" id="jsonBlock">{{ safe_json }}</pre>
+  {% if not is_admin %}
+  <div style="font-size:11px;color:var(--warning);margin-top:8px;">
+    {{ svg('alert') }} 敏感字段 (wifi_pass/mqtt_pass) 已脱敏, 仅管理员可见明文
+  </div>
+  {% endif %}
 </div>
 
 {% else %}

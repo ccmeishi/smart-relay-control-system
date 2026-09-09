@@ -330,14 +330,22 @@ def touch_session(session_id):
 
 
 def list_online_users():
-    """返回在线用户列表 (status='online')"""
+    """返回在线用户列表 (status='online' 且 last_seen 在 5 分钟内)"""
     with get_conn() as conn:
         rows = conn.execute(
             """SELECT id, user_id, username, ip, login_at, last_seen, status
                FROM login_sessions
                WHERE status='online'
+                 AND last_seen > datetime('now', '-5 minutes')
                ORDER BY last_seen DESC"""
         ).fetchall()
+    # 顺便清理超时 session 的 status (防止永远 online)
+    conn2 = sqlite3.connect(DB_PATH)
+    conn2.execute(
+        "UPDATE login_sessions SET status='offline' WHERE status='online' AND last_seen <= datetime('now', '-5 minutes')"
+    )
+    conn2.commit()
+    conn2.close()
     return [dict(r) for r in rows]
 
 
@@ -357,10 +365,11 @@ def list_recent_sessions(limit=20):
 
 
 def get_online_count():
-    """当前在线用户数 (status='online')"""
+    """当前在线用户数 (status='online' 且 last_seen 在 5 分钟内)"""
     with get_conn() as conn:
         row = conn.execute(
-            "SELECT COUNT(*) as c FROM login_sessions WHERE status='online'"
+            """SELECT COUNT(*) as c FROM login_sessions
+               WHERE status='online' AND last_seen > datetime('now', '-5 minutes')"""
         ).fetchone()
     return row["c"] if row else 0
 
