@@ -1,0 +1,9 @@
+# 测试依赖（开发/本地跑测试时安装）
+# 运行时依赖见 simulator/esp32/（MicroPython 标准库 + 板载模块）
+# 运行时 PC 工具依赖见各 script 头部
+
+pymodbus>=3.6.0,<4.0
+paho-mqtt>=2.0
+pytest>=8.0
+pytest-asyncio>=0.23
+amqtt>=0.12         # 端到端测试用的纯 Python MQTT broker

@@ -1,0 +1,72 @@
+# Gitee Go CI 配置
+# 文档：https://help.gitee.com/gitee-go/quick-start
+# 流水线模型：image / stages / job(stage, script, cache, artifacts, only)
+
+# 全局变量
+variables:
+  PYTHONUNBUFFERED: "1"
+
+# 默认运行环境（每个 job 单独指定 image 时可覆盖）
+image: python:3.11-slim
+
+# 阶段定义：声明顺序，所有 stage: 等于这里的 job 会按顺序跑
+stages:
+  - install
+  - test
+  - lint
+
+# ============ 安装依赖 ============
+install-deps:
+  stage: install
+  script:
+    - python -m pip install --upgrade pip
+    - pip install -r simulator/requirements-dev.txt
+  cache:
+    key: pip-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/pip/
+  only:
+    - group7-cc
+    - main
+    - develop
+    - merge_requests
+
+# ============ 跑 pytest ============
+pytest:
+  stage: test
+  script:
+    - cd simulator
+    - mkdir -p test-reports
+    - pytest tests/ -v --tb=short --junitxml=test-reports/pytest.xml
+  artifacts:
+    name: pytest-report-$CI_COMMIT_REF_SLUG
+    paths:
+      - simulator/test-reports/
+    expire_in: 7 days
+    when: always
+  cache:
+    key: pip-${CI_COMMIT_REF_SLUG}
+    paths:
+      - .cache/pip/
+    policy: pull
+  needs:
+    - install-deps
+  only:
+    - group7-cc
+    - main
+    - develop
+    - merge_requests
+
+# ============ Lint（不阻塞主流程）============
+ruff:
+  stage: lint
+  allow_failure: true   # 即使 lint 失败也不影响 PR 合入
+  script:
+    - cd simulator
+    - pip install ruff
+    - ruff check tools/ day1/ day2/ day8/ esp32/ tests/ || true
+  only:
+    - group7-cc
+    - main
+    - develop
+    - merge_requests

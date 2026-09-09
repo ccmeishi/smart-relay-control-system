@@ -305,6 +305,12 @@ def handle_gateway_reply(reply_key, payload):
     # 移除可能添加的 bridge 字段
 
     # publish 到虚拟设备的 reply topic
+    # TODO(2026-09-09 workbuddy-test): reply topic 当前格式是 /product/device/{reply_key}
+    #   （如 /light-cc/light001/write_reply），不符合 JetLinks 标准
+    #   （标准是 /product/device/properties/write/reply）。
+    #   当前功能未发现明显异常（可能是 EMQX 规则兜底转发，或平台端不依赖 reply topic），
+    #   但建议在真机上用 MQTTX 订阅两个 topic 验证一次。
+    #   暂不修改，先记录。
     reply_topic = virtual_topic(entry["origin_product"], entry["origin_device"], entry["reply_key"])
     _BRIDGE_PUBLISHER.publish(reply_topic, json.dumps(origin_payload), qos=1)
     print(f"  → gateway {reply_key} → {entry['origin_product']}/{entry['origin_device']} {entry['reply_key']}")
