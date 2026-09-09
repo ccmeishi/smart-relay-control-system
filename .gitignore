@@ -23,9 +23,12 @@ env/
 # TRAE AI 临时文件
 diag_*.txt
 diag_*.json
+*.bak
 
 # impeccable 技能引擎二进制（启动器会自动下载，无需入库）
 .trae-cn/skills/impeccable/scripts/bin/
+.trae/skills/
+.trae-cn/skills/
 
 # OS
 .DS_Store
