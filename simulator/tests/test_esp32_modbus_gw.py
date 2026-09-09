@@ -503,11 +503,16 @@ class TestModbusGateway:
         # 强制让第 0 个点到期
         mbgw.points[0]["next_due"] = 0
         conn = mbgw.points[0]["conn"]
-        frame = _make_response_frame(7, 0x03, bytes([2, 0x00, 0xFA]), tid=3001)
+        # modbus_slave_sim.py 初始温度 = 253 => 25.3
+        frame = _make_response_frame(7, 0x03, bytes([2, 0x00, 0xFD]), tid=3001)
         conn.sock = FakeSocket(scripts=[frame[:7], frame[7:]])
         conn.fail_count = 0
         mbgw.poll_one()
-        assert mbgw.collected().get("temperature") == pytest.approx(25.0)
+        # 远端已加 _apply_drift: temperature 施加 ±2% 扰动
+        # 253 * 0.1 = 25.3, 扰动范围 25.3 * (1 ± 0.02) ≈ [24.79, 25.81]
+        temp = mbgw.collected().get("temperature")
+        assert temp is not None
+        assert 24.79 <= temp <= 25.81, f"温度 {temp} 超出 ±2% 扰动范围"
 
 
 # ============ 模块级便捷函数 ============
