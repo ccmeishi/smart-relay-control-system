@@ -420,14 +420,16 @@ def main():
         try:
             run_normal(cfg)
         except _EnterConfig:
-            log("收到配网请求, 切换到配网模式")
+            log("收到配网请求, 重启进入配网模式")
+            # 运行中直接切 STA->AP 会被 MQTT/Modbus 残留 socket 挂死;
+            # 写标记后重启, 由 boot.py 在干净状态进入配网
             try:
-                if _cli:
-                    _cli.disconnect()
+                with open("/force_ap", "w") as _f:
+                    _f.write("1")
             except Exception:
                 pass
-            modbus_gw.close()
-            ap_config.run(app_config.load() or cfg)
+            time.sleep_ms(300)
+            machine.reset()
 
 
 if __name__ == "__main__":

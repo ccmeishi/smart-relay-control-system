@@ -17,6 +17,22 @@ if _force_config:
     ap_config.run(None)
     sys.exit()
 
+# ---------- 0b. 运行时长按写的 /force_ap 标记 -> 干净地进入配网模式 ----------
+# (运行中直接切换 WiFi STA->AP 会因 MQTT/Modbus 残留 socket 挂死;
+#  改为重启后在此处进入, 与上电同一条干净路径)
+try:
+    os.stat("/force_ap")
+    print("  检测到配网标记 /force_ap, 进入配网模式...")
+    try:
+        os.remove("/force_ap")
+    except OSError:
+        pass
+    import ap_config
+    ap_config.run(None)
+    sys.exit()
+except OSError:
+    pass
+
 # ---------- 1. config.json ----------
 try:
     os.stat("/config.json")
