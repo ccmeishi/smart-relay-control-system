@@ -28,16 +28,19 @@ from db import init_db, load_routing, load_all_mappings, update_device_status  #
 from paho.mqtt import client as mqtt_client
 
 # ============================================================
-# 连接配置
+# 连接配置: 统一从 esp32_firmware/config.json 读取, 避免多处硬编码
 # ============================================================
-MQTT_HOST = "172.16.4.211"
-MQTT_PORT = 9783
-MQTT_USER = "test"
-MQTT_PASS = "123456"
+from db import load_gateway_config
+_cfg = load_gateway_config()
+
+MQTT_HOST = _cfg["mqtt_host"]
+MQTT_PORT = _cfg["mqtt_port"]
+MQTT_USER = _cfg["mqtt_user"]
+MQTT_PASS = _cfg["mqtt_pass"]
 
 # 网关产品 (ESP32 直接连的)
-GATEWAY_PRODUCT = "relay-cc"
-GATEWAY_DEVICE  = "relaycc"
+GATEWAY_PRODUCT = _cfg["product_id"]
+GATEWAY_DEVICE  = _cfg["device_id"]
 
 # Bridge 自己的 client_id (要唯一)
 BRIDGE_CLIENT_ID = "bridge-day9-v1"

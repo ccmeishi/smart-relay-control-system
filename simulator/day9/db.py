@@ -45,8 +45,36 @@ def _validate_mapping_fields(gateway_key, product_id, device_id, property_name, 
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db")
 DB_PATH = os.path.join(DB_DIR, "iot_platform.db")
 
+# ESP32 网关配置文件路径 (MQTT/WiFi/采集点都在这里统一配置)
+GATEWAY_CONFIG_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "esp32_firmware", "config.json"
+)
+
 # 确保 db 目录存在
 os.makedirs(DB_DIR, exist_ok=True)
+
+
+def load_gateway_config():
+    """统一从 esp32_firmware/config.json 读取 MQTT + WiFi + 网关凭据.
+
+    返回 dict: {
+        mqtt_host, mqtt_port, mqtt_user, mqtt_pass,
+        product_id, device_id, wifi_ssid, wifi_pass
+    }
+    """
+    import json
+    with open(GATEWAY_CONFIG_PATH, "r", encoding="utf-8") as f:
+        cfg = json.load(f)
+    return {
+        "mqtt_host": cfg.get("mqtt_host", "localhost"),
+        "mqtt_port": int(cfg.get("mqtt_port", 1883)),
+        "mqtt_user": cfg.get("mqtt_user", ""),
+        "mqtt_pass": cfg.get("mqtt_pass", ""),
+        "product_id": cfg.get("product_id", ""),
+        "device_id": cfg.get("device_id", ""),
+        "wifi_ssid": cfg.get("wifi_ssid", ""),
+        "wifi_pass": cfg.get("wifi_pass", ""),
+    }
 
 
 # ============================================================
@@ -271,6 +299,12 @@ def list_users() -> list:
 
 
 def add_user(username, password, role="user", display_name=""):
+    _validate("username", username, _RE_USER, "用户名")
+    _validate("password", password, _RE_PASS, "密码")
+    if display_name:
+        _validate("display_name", display_name, _RE_NAME, "显示名")
+    if role not in ("admin", "user"):
+        raise ValueError(f"非法角色 '{role}', 只允许 'admin' 或 'user'")
     with get_conn() as conn:
         conn.execute(
             "INSERT INTO users (username, password_hash, role, display_name) VALUES (?, ?, ?, ?)",
@@ -279,6 +313,8 @@ def add_user(username, password, role="user", display_name=""):
 
 
 def update_user_role(user_id, role):
+    if role not in ("admin", "user"):
+        raise ValueError(f"非法角色 '{role}', 只允许 'admin' 或 'user'")
     with get_conn() as conn:
         conn.execute("UPDATE users SET role=? WHERE id=?", (role, user_id))
 
@@ -289,6 +325,7 @@ def delete_user(user_id):
 
 
 def reset_password(user_id, new_password):
+    _validate("password", new_password, _RE_PASS, "密码")
     with get_conn() as conn:
         conn.execute(
             "UPDATE users SET password_hash=? WHERE id=?",

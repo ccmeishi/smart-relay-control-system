@@ -32,7 +32,7 @@ from db import (
     authenticate, list_users, add_user, update_user_role, delete_user, reset_password,
     start_session, end_session, touch_session, list_online_users,
     list_recent_sessions, get_online_count,
-    get_device_status_all,
+    get_device_status_all, load_gateway_config,
 )
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -58,12 +58,13 @@ def _get_mqtt():
         return None
 
     client = mqtt_client.Client(client_id="web-admin-day9", clean_session=True)
-    client.username_pw_set("test", "123456")
+    gw_cfg = load_gateway_config()
+    client.username_pw_set(gw_cfg["mqtt_user"], gw_cfg["mqtt_pass"])
     try:
-        client.connect("172.16.4.211", 9783, keepalive=30)
+        client.connect(gw_cfg["mqtt_host"], gw_cfg["mqtt_port"], keepalive=30)
         client.loop_start()
         _MQTT_CLIENT = client
-        print("[Web] MQTT 客户端已连接 172.16.4.211:9783")
+        print(f"[Web] MQTT 客户端已连接 {gw_cfg['mqtt_host']}:{gw_cfg['mqtt_port']}")
     except Exception as e:
         print(f"[Web] MQTT 连接失败: {e}")
         return None
