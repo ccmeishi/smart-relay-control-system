@@ -121,7 +121,7 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 <div class="hint">
 ESP32 作为单网关上报所有数据到此产品的 properties/report,
 Python Bridge 订阅此 topic 后按 routing table 拆分到多虚拟产品。<br>
-网关产品物模型需包含所有属性: relay1~4, temperature, humidity, human, smoke, current, voltage
+网关产品物模型需包含所有属性: relay1~4, temperature, humidity, human, smoke
 </div>
 </div>
 

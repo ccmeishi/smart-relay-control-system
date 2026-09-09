@@ -33,8 +33,6 @@ except OSError:
             "points": [
                 {"addr": "0x0000", "key": "temperature", "period_ms": 3000, "count": 1, "type": "uint16", "scale": 0.1},
                 {"addr": "0x0001", "key": "humidity",    "period_ms": 5000, "count": 1, "type": "uint16", "scale": 0.1},
-                {"addr": "0x0002", "key": "current",     "period_ms": 10000, "count": 1, "type": "uint16", "scale": 0.1},
-                {"addr": "0x0003", "key": "voltage",     "period_ms": 10000, "count": 1, "type": "uint16", "scale": 0.1},
                 {"addr": "0x0004", "key": "human",       "period_ms": 3000, "count": 1, "type": "uint16", "scale": 1},
                 {"addr": "0x0005", "key": "smoke",       "period_ms": 3000, "count": 1, "type": "uint16", "scale": 1},
             ]
