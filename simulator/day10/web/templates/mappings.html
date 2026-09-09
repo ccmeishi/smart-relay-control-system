@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}映射管理 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}映射管理 / 设备映射关系{% endblock %}
+{% block content %}
+
+<!-- 工具栏 -->
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  <div style="font-size:12px;color:var(--text-muted);">
+    网关侧采集点 (ESP32 relay-cc/relaycc) → 虚拟产品/设备/属性 (JetLinks)
+  </div>
+  {% if current_user and current_user.role == 'admin' %}
+    <button class="btn btn-primary" onclick="openModal('addModal')">{{ svg('plus') }} 新增映射</button>
+  {% else %}
+    <span style="font-size:12px;color:var(--warning);display:flex;align-items:center;gap:6px;">{{ svg('shield') }} 普通用户仅可查看，新增/编辑/删除需管理员</span>
+  {% endif %}
+</div>
+
+<!-- 映射列表 -->
+<div class="card" style="padding:0;">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Gateway Key</th>
+        <th>虚拟产品</th>
+        <th>虚拟设备</th>
+        <th>属性名</th>
+        <th>描述</th>
+        <th>状态</th>
+        {% if current_user and current_user.role == 'admin' %}<th>操作</th>{% endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in mappings %}
+      <tr>
+        <td>{{ m.id }}</td>
+        <td><code style="color:var(--accent-light);">{{ m.gateway_key }}</code></td>
+        <td><code>{{ m.product_id }}</code></td>
+        <td><code>{{ m.device_id }}</code></td>
+        <td>{{ m.property_name }}</td>
+        <td style="color:var(--text-secondary);">{{ m.description or '-' }}</td>
+        <td>
+          {% if m.enabled %}
+            <span class="badge on">启用</span>
+          {% else %}
+            <span class="badge off">禁用</span>
+          {% endif %}
+        </td>
+        {% if current_user and current_user.role == 'admin' %}
+        <td>
+          <div class="actions">
+            <form method="post" action="{{ url_for('mappings_toggle', mid=m.id) }}" style="display:inline;">
+              {% if m.enabled %}
+                <button class="btn-link" style="color:var(--warning);">{{ svg('shield') }} 禁用</button>
+              {% else %}
+                <button class="btn-link" style="color:var(--success);">{{ svg('shield') }} 启用</button>
+              {% endif %}
+            </form>
+            <button class="btn-link" onclick="openEdit({{ m }})">{{ svg('edit') }} 编辑</button>
+            <form method="post" action="{{ url_for('mappings_delete', mid=m.id) }}"
+                  onsubmit="return confirm('确认删除此映射？');" style="display:inline;">
+              <button class="btn-link danger">{{ svg('trash') }} 删除</button>
+            </form>
+          </div>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      {% if not mappings %}
+      <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">暂无映射数据</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ========== 新增映射弹窗 (仅 admin) ========== -->
+{% if current_user and current_user.role == 'admin' %}
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('plus') }} 新增设备映射</div>
+      <button class="modal-close" onclick="closeModal('addModal')">×</button>
+    </div>
+    <form method="post" action="{{ url_for('mappings_add') }}">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Gateway Key (网关侧采集点)</label>
+          <input type="text" name="gateway_key" class="form-control" required
+                 pattern="[a-z0-9_]{1,40}"
+                 title="仅允许小写字母、数字、下划线 (如 relay1, temperature, human)"
+                 placeholder="relay1, temperature, human...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">虚拟产品 ID</label>
+          <input type="text" name="product_id" class="form-control" required
+                 pattern="[a-z0-9-]{1,40}"
+                 title="仅允许小写字母、数字、连字符 (如 lock-cc, sensor-cc)"
+                 placeholder="lock-cc, sensor-cc...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">虚拟设备 ID</label>
+          <input type="text" name="device_id" class="form-control" required
+                 pattern="[a-z0-9-]{1,40}"
+                 title="仅允许小写字母、数字、连字符 (如 lock001, sensorcc)"
+                 placeholder="lock001, sensorcc...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">属性名</label>
+          <input type="text" name="property_name" class="form-control" required
+                 pattern="[a-z0-9_]{1,40}"
+                 title="仅允许小写字母、数字、下划线 (如 switch, temperature, detected)"
+                 placeholder="switch, temperature, detected...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">描述 (可选)</label>
+          <input type="text" name="description" class="form-control"
+                 placeholder="备注说明">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('plus') }} 添加</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ========== 编辑映射弹窗 (仅 admin) ========== -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('edit') }} 编辑设备映射</div>
+      <button class="modal-close" onclick="closeModal('editModal')">×</button>
+    </div>
+    <form method="post" id="editForm">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Gateway Key</label>
+          <input type="text" name="gateway_key" class="form-control" id="edit_gateway_key" required
+                 pattern="[a-z0-9_]{1,40}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">虚拟产品 ID</label>
+          <input type="text" name="product_id" class="form-control" id="edit_product_id" required
+                 pattern="[a-z0-9-]{1,40}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">虚拟设备 ID</label>
+          <input type="text" name="device_id" class="form-control" id="edit_device_id" required
+                 pattern="[a-z0-9-]{1,40}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">属性名</label>
+          <input type="text" name="property_name" class="form-control" id="edit_property_name" required
+                 pattern="[a-z0-9_]{1,40}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">描述</label>
+          <input type="text" name="description" class="form-control" id="edit_description">
+        </div>
+        <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" name="enabled" id="edit_enabled" checked style="width:auto;">
+          <label for="edit_enabled" style="margin:0;font-size:13px;">启用此映射</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('edit') }} 保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openEdit(m) {
+    document.getElementById('editForm').action = `/mappings/${m.id}/edit`;
+    document.getElementById('edit_gateway_key').value = m.gateway_key;
+    document.getElementById('edit_product_id').value = m.product_id;
+    document.getElementById('edit_device_id').value = m.device_id;
+    document.getElementById('edit_property_name').value = m.property_name;
+    document.getElementById('edit_description').value = m.description || '';
+    document.getElementById('edit_enabled').checked = !!m.enabled;
+    openModal('editModal');
+  }
+</script>
+{% endblock %}

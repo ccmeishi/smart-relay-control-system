@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}用户管理 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}用户管理 / 角色权限{% endblock %}
+{% block content %}
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+  <div style="font-size:12px;color:var(--text-muted);">
+    Day9 简化版权限系统：区分 <b style="color:var(--danger);">管理员</b>（增删改查全部）和 <b style="color:var(--accent-light);">普通用户</b>（仅查看）
+  </div>
+  <button class="btn btn-primary" onclick="openModal('addUserModal')">{{ svg('plus') }} 新增用户</button>
+</div>
+
+<div class="card" style="padding:0;">
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>用户名</th>
+        <th>显示名</th>
+        <th>角色</th>
+        <th>创建时间</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td>{{ u.id }}</td>
+        <td><code style="color:var(--accent-light);">{{ u.username }}</code></td>
+        <td>{{ u.display_name or '-' }}</td>
+        <td>
+          {% if u.role == 'admin' %}
+            <span class="badge admin">管理员</span>
+          {% else %}
+            <span class="badge user">普通用户</span>
+          {% endif %}
+        </td>
+        <td style="color:var(--text-secondary);font-size:12px;">{{ u.created_at }}</td>
+        <td>
+          <div class="actions">
+            <button class="btn-link" onclick="openRole({{ u }})">{{ svg('users') }} 改角色</button>
+            <button class="btn-link" onclick="openPwd({{ u }})">{{ svg('shield') }} 重置密码</button>
+            {% if u.id != current_user.id %}
+            <form method="post" action="{{ url_for('users_delete', uid=u.id) }}"
+                  onsubmit="return confirm('确认删除用户 {{ u.username }}？');" style="display:inline;">
+              <button class="btn-link danger">{{ svg('trash') }} 删除</button>
+            </form>
+            {% else %}
+            <span style="color:var(--text-muted);font-size:11px;">当前登录</span>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+      {% if not users %}
+      <tr><td colspan="6" style="text-align:center;padding:32px;color:var(--text-muted);">暂无用户</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ========== 新增用户弹窗 ========== -->
+<div class="modal-overlay" id="addUserModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('plus') }} 新增用户</div>
+      <button class="modal-close" onclick="closeModal('addUserModal')">×</button>
+    </div>
+    <form method="post" action="{{ url_for('users_add') }}">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">用户名</label>
+          <input type="text" name="username" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">初始密码</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">角色</label>
+          <select name="role" class="form-control">
+            <option value="user">普通用户 (只读)</option>
+            <option value="admin">管理员 (全部权限)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">显示名 (可选)</label>
+          <input type="text" name="display_name" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addUserModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('plus') }} 创建</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ========== 改角色弹窗 ========== -->
+<div class="modal-overlay" id="roleModal">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('users') }} 修改角色</div>
+      <button class="modal-close" onclick="closeModal('roleModal')">×</button>
+    </div>
+    <form method="post" id="roleForm">
+      <div class="modal-body">
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+          正在修改用户: <code id="role_username"></code>
+        </div>
+        <div class="form-group">
+          <label class="form-label">角色</label>
+          <select name="role" class="form-control" id="role_select">
+            <option value="user">普通用户 (只读)</option>
+            <option value="admin">管理员 (全部权限)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('roleModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('edit') }} 保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ========== 重置密码弹窗 ========== -->
+<div class="modal-overlay" id="pwdModal">
+  <div class="modal" style="width:360px;">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('shield') }} 重置密码</div>
+      <button class="modal-close" onclick="closeModal('pwdModal')">×</button>
+    </div>
+    <form method="post" id="pwdForm">
+      <div class="modal-body">
+        <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px;">
+          正在重置用户: <code id="pwd_username"></code> 的密码
+        </div>
+        <div class="form-group">
+          <label class="form-label">新密码</label>
+          <input type="password" name="password" class="form-control" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('pwdModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('shield') }} 确认重置</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openRole(u) {
+    document.getElementById('roleForm').action = `/users/${u.id}/role`;
+    document.getElementById('role_username').textContent = u.username;
+    document.getElementById('role_select').value = u.role;
+    openModal('roleModal');
+  }
+  function openPwd(u) {
+    document.getElementById('pwdForm').action = `/users/${u.id}/password`;
+    document.getElementById('pwd_username').textContent = u.username;
+    openModal('pwdModal');
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}看板 - Day10 IoT 管理平台{% endblock %}
+{% block page_title %}首页 / 看板{% endblock %}
+{% block content %}
+
+<!-- 统计卡片 (可点击跳转) -->
+<div class="stats-grid">
+  <a href="{{ url_for('mappings_list') }}" class="stat-card blue" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">设备映射总数</div>
+      <div class="stat-icon-box blue">{{ svg('link') }}</div>
+    </div>
+    <div class="stat-value">{{ total_mappings }}</div>
+    <div class="stat-trend">点击查看详情</div>
+  </a>
+
+  <a href="{{ url_for('mappings_list') }}" class="stat-card green" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">已启用映射</div>
+      <div class="stat-icon-box green">{{ svg('activity') }}</div>
+    </div>
+    <div class="stat-value">{{ enabled_count }}</div>
+    <div class="stat-trend">点击查看详情</div>
+  </a>
+
+  <a href="{{ url_for('devices_console') }}" class="stat-card cyan" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">平台设备实例</div>
+      <div class="stat-icon-box cyan">{{ svg('cpu') }}</div>
+    </div>
+    <div class="stat-value">{{ virtual_device_count }}</div>
+    <div class="stat-trend">点击查看实物</div>
+  </a>
+
+  <a href="{{ url_for('scenes_list') }}" class="stat-card purple" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">场景规则</div>
+      <div class="stat-icon-box purple">{{ svg('zap') }}</div>
+    </div>
+    <div class="stat-value">{{ scene_stats.enabled }}/{{ scene_stats.total }}</div>
+    <div class="stat-trend">累计触发 {{ scene_stats.total_triggers }} 次</div>
+  </a>
+
+  <a href="{{ url_for('alarms_list') }}" class="stat-card red" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">未确认告警</div>
+      <div class="stat-icon-box red">{{ svg('alert') }}</div>
+    </div>
+    <div class="stat-value" style="color:{% if alarm_stats.active > 0 %}var(--danger){% else %}var(--text-primary){% endif %};">{{ alarm_stats.active }}</div>
+    <div class="stat-trend" style="color:{% if alarm_stats.active_critical > 0 %}var(--danger){% else %}var(--success){% endif %};">
+      {% if alarm_stats.active_critical > 0 %}严重 {{ alarm_stats.active_critical }} 待处理{% else %}无严重告警{% endif %}
+    </div>
+  </a>
+
+  <a href="{{ url_for('users_list') if current_user and current_user.role == 'admin' else '#' }}" class="stat-card orange" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">平台用户</div>
+      <div class="stat-icon-box orange">{{ svg('users') }}</div>
+    </div>
+    <div class="stat-value">{{ user_count }}</div>
+    <div class="stat-trend">{% if current_user and current_user.role == 'admin' %}点击管理{% else %}仅管理员可管理{% endif %}</div>
+  </a>
+
+  <a href="{{ url_for('sessions_list') if current_user and current_user.role == 'admin' else '#' }}" class="stat-card green" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">在线用户</div>
+      <div class="stat-icon-box green">{{ svg('activity') }}</div>
+    </div>
+    <div class="stat-value">{{ online_count }}</div>
+    <div class="stat-trend">{% if current_user and current_user.role == 'admin' %}点击追踪{% else %}仅管理员可查看{% endif %}</div>
+  </a>
+
+  <a href="{{ url_for('config_points') }}" class="stat-card blue" style="text-decoration:none;color:inherit;">
+    <div class="stat-header">
+      <div class="stat-label">网关采集点</div>
+      <div class="stat-icon-box blue">{{ svg('globe') }}</div>
+    </div>
+    <div class="stat-value">{{ gateway_keys|length }}</div>
+    <div class="stat-trend">点击查看配置</div>
+  </a>
+</div>
+
+<!-- 中部图表区 -->
+<div class="grid-3" style="margin-bottom:24px;">
+
+  <!-- 场景规则触发分布 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('zap') }}场景规则</div>
+      <a href="{{ url_for('scenes_list') }}" class="btn-link">管理</a>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--text-secondary);">启用规则</span>
+        <span style="font-size:20px;font-weight:700;color:var(--success);">{{ scene_stats.enabled }}</span>
+      </div>
+      <div style="background:var(--bg-tertiary);border-radius:6px;height:8px;overflow:hidden;">
+        <div style="background:linear-gradient(90deg,var(--success),var(--accent));height:100%;width:{% if scene_stats.total > 0 %}{{ (scene_stats.enabled/scene_stats.total*100)|round }}{% else %}0{% endif %}%;"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--text-secondary);">累计触发</span>
+        <span style="font-size:20px;font-weight:700;color:var(--accent-light);">{{ scene_stats.total_triggers }}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:13px;color:var(--text-secondary);">禁用规则</span>
+        <span style="font-size:20px;font-weight:700;color:var(--text-muted);">{{ scene_stats.disabled }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 告警状态分布 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('alert') }}告警状态分布</div>
+      <a href="{{ url_for('alarms_list') }}" class="btn-link">查看</a>
+    </div>
+    <div class="chart-container">
+      <svg class="chart-svg" viewBox="0 0 200 160">
+        <circle cx="80" cy="80" r="55" fill="none" stroke="rgba(71,85,105,0.3)" stroke-width="22"/>
+        {% set t = alarm_stats.total if alarm_stats.total > 0 else 1 %}
+        {% set active_len = (alarm_stats.active / t * 345)|round %}
+        {% set ack_len = (alarm_stats.acknowledged / t * 345)|round %}
+        {% set cleared_len = (alarm_stats.cleared / t * 345)|round %}
+        {% if alarm_stats.active > 0 %}
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#ef4444" stroke-width="22"
+                stroke-dasharray="{{ active_len }} {{ 345 - active_len }}" transform="rotate(-90 80 80)"/>
+        {% endif %}
+        {% if alarm_stats.acknowledged > 0 %}
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#f59e0b" stroke-width="22"
+                stroke-dasharray="{{ ack_len }} {{ 345 - ack_len }}" stroke-dashoffset="-{{ active_len }}" transform="rotate(-90 80 80)"/>
+        {% endif %}
+        {% if alarm_stats.cleared > 0 %}
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#22c55e" stroke-width="22"
+                stroke-dasharray="{{ cleared_len }} {{ 345 - cleared_len }}" stroke-dashoffset="-{{ (active_len + ack_len)|round }}" transform="rotate(-90 80 80)"/>
+        {% endif %}
+        <text x="80" y="75" text-anchor="middle" fill="#f8fafc" font-size="22" font-weight="700">{{ alarm_stats.total }}</text>
+        <text x="80" y="95" text-anchor="middle" fill="#64748b" font-size="10">告警总数</text>
+        <g transform="translate(155, 45)">
+          <circle cx="0" cy="0" r="3" fill="#ef4444"/><text x="10" y="4" fill="#94a3b8" font-size="11">未确认 {{ alarm_stats.active }}</text>
+          <circle cx="0" cy="22" r="3" fill="#f59e0b"/><text x="10" y="26" fill="#94a3b8" font-size="11">已确认 {{ alarm_stats.acknowledged }}</text>
+          <circle cx="0" cy="44" r="3" fill="#22c55e"/><text x="10" y="50" fill="#94a3b8" font-size="11">已清除 {{ alarm_stats.cleared }}</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 告警级别分布 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('layers') }}告警级别</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px;padding:12px 0;">
+      {% for lvl, label in [('critical','严重'),('warning','警告'),('info','提示')] %}
+      <div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+          <span style="font-weight:600;">
+            <span class="badge {{ lvl }}" style="margin-right:6px;">{{ level_labels.get(lvl, lvl) }}</span>
+          </span>
+          <span style="color:var(--accent-light);font-weight:700;">{{ alarm_stats[lvl] }}</span>
+        </div>
+        <div style="background:var(--bg-tertiary);border-radius:4px;height:8px;overflow:hidden;">
+          <div style="background:{% if lvl=='critical' %}var(--danger){% elif lvl=='warning' %}var(--warning){% else %}var(--accent){% endif %};height:100%;width:{% if alarm_stats.total > 0 %}{{ (alarm_stats[lvl]/alarm_stats.total*100)|round }}{% else %}0{% endif %}%;"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+<!-- 下部分区 -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('globe') }}网关侧采集点</div>
+      <a href="{{ url_for('mappings_list') }}" class="btn-link">查看全部</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>采集点</th><th>描述</th></tr></thead>
+        <tbody>
+          {% for k, desc in gateway_keys.items() %}
+          <tr>
+            <td><code style="color:var(--accent-light);">{{ k }}</code></td>
+            <td style="color:var(--text-secondary);">{{ desc }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('layers') }}虚拟产品分布</div>
+      <span style="font-size:12px;color:var(--text-muted);">按映射数量</span>
+    </div>
+    {% if product_stats %}
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        {% for pid, cnt in product_stats.items() %}
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+            <span style="font-weight:600;">{{ pid }}</span>
+            <span style="color:var(--accent-light);font-weight:700;">{{ cnt }}</span>
+          </div>
+          <div style="background:var(--bg-tertiary);border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:linear-gradient(90deg,var(--accent),var(--purple));height:100%;width:{{ (cnt/enabled_count*100)|round }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">暂无启用的映射</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 快捷入口 -->
+<div class="grid-3" style="margin-bottom:24px;">
+  <a href="{{ url_for('scenes_list') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('zap') }}场景控制</div>
+      <span class="badge on">{{ scene_stats.enabled }} 条</span>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      规则引擎 / 自动联动 / 冷却控制<br>
+      <span style="color:var(--text-muted);font-size:11px;">温度过高自动断电 / 有人自动开灯</span>
+    </div>
+  </a>
+
+  <a href="{{ url_for('alarms_list') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('alert') }}告警管理</div>
+      {% if alarm_stats.active > 0 %}<span class="badge critical">{{ alarm_stats.active }} 待处理</span>{% else %}<span class="badge on">正常</span>{% endif %}
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      告警列表 / 确认清除 / 级别筛选<br>
+      <span style="color:var(--text-muted);font-size:11px;">三态流转: 未确认 → 已确认 → 已清除</span>
+    </div>
+  </a>
+
+  <a href="{{ url_for('devices_console') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('cpu') }}实物控制台</div>
+      {{ svg('zap') }}
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      继电器开关 / 传感器读数 / 一键全开全关<br>
+      <span style="color:var(--text-muted);font-size:11px;">通过 MQTT 直接控制 ESP32 网关</span>
+    </div>
+  </a>
+</div>
+
+{% endblock %}

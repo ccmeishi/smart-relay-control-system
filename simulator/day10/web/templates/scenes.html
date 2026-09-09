@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}场景控制 - Day10{% endblock %}
+{% block page_title %}场景与告警 / 场景控制{% endblock %}
+{% block content %}
+
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('zap') }}场景联动规则</div>
+    <div class="actions">
+      {% if current_user and current_user.role == 'admin' %}
+      <button class="btn btn-primary" onclick="openModal('addModal')">{{ svg('plus') }}新增规则</button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-subtitle" style="margin-bottom:18px;">
+    规则结构: <strong>IF</strong> [采集点] [运算符] [阈值] <strong>THEN</strong> [动作] + 产生 [告警级别] 告警 &nbsp;|&nbsp;
+    触发后进入冷却期, 避免频繁动作
+  </div>
+
+  {% if rules %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>规则</th>
+          <th>触发条件</th>
+          <th>动作</th>
+          <th>告警级别</th>
+          <th>冷却(s)</th>
+          <th>触发次数</th>
+          <th>状态</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rules %}
+        <tr>
+          <td>
+            <div style="font-weight:600;">{{ r.name }}</div>
+            {% if r.description %}<div style="font-size:11px;color:var(--text-muted);margin-top:3px;">{{ r.description }}</div>{% endif %}
+          </td>
+          <td>
+            <code style="color:var(--accent-light);">{{ r.trigger_key }}</code>
+            <span style="color:var(--warning);font-weight:700;">{{ r.trigger_operator }}</span>
+            <span style="color:var(--success);">{{ r.trigger_value }}</span>
+          </td>
+          <td>
+            {% if r.action_type == 'set_relay' %}
+              <span style="color:var(--accent-light);">{{ action_labels.get(r.action_type, r.action_type) }}</span>
+              <code>{{ r.action_target }}</code>=<code>{{ r.action_value }}</code>
+            {% else %}
+              <span style="color:var(--purple);">{{ action_labels.get(r.action_type, r.action_type) }}</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="badge {{ r.alarm_level }}">{{ level_labels.get(r.alarm_level, r.alarm_level) }}</span>
+          </td>
+          <td>{{ r.cooldown_sec }}</td>
+          <td>
+            <span style="font-weight:700;color:var(--accent-light);">{{ r.trigger_count }}</span>
+            {% if r.last_triggered %}
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">{{ r.last_triggered }}</div>
+            {% else %}
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px;">未触发</div>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.enabled %}
+              <span class="badge on">启用</span>
+            {% else %}
+              <span class="badge off">禁用</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="actions">
+              {% if current_user and current_user.role == 'admin' %}
+              <form method="post" action="{{ url_for('scenes_toggle', rid=r.id) }}" style="display:inline;">
+                <button type="submit" class="btn btn-sm {{ 'btn-warning' if r.enabled else 'btn-success' }}">
+                  {{ '禁用' if r.enabled else '启用' }}
+                </button>
+              </form>
+              <button class="btn btn-sm btn-secondary" onclick="openEditModal({{ r.id }})">{{ svg('edit') }}编辑</button>
+              <form method="post" action="{{ url_for('scenes_delete', rid=r.id) }}" style="display:inline;"
+                    onsubmit="return confirm('确认删除规则「{{ r.name }}」?');">
+                <button type="submit" class="btn btn-sm btn-danger">{{ svg('trash') }}</button>
+              </form>
+              {% else %}
+              <span style="color:var(--text-muted);font-size:11px;">只读</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="color:var(--text-muted);font-size:13px;padding:40px;text-align:center;">
+    暂无场景规则, 点击右上角「新增规则」创建第一条联动
+  </div>
+  {% endif %}
+</div>
+
+<!-- 规则说明卡片 -->
+<div class="grid-3" style="margin-top:24px;">
+  <div class="card">
+    <div class="card-header"><div class="card-title">{{ svg('activity') }}动作类型</div></div>
+    <div style="font-size:12px;line-height:2;color:var(--text-secondary);">
+      <code>set_relay</code> - 控制单路继电器<br>
+      <code>all_relay_off</code> - 全部继电器断电<br>
+      <code>all_relay_on</code> - 全部继电器开启<br>
+      <code>send_alarm</code> - 仅产生告警不控制设备
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">{{ svg('chart') }}运算符</div></div>
+    <div style="font-size:12px;line-height:2;color:var(--text-secondary);">
+      <code>&gt; &lt; &gt;= &lt;= == !=</code><br>
+      数值比较 (温度&gt;35) 或字符串比较 (human==1)
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div class="card-title">{{ svg('alert') }}告警级别</div></div>
+    <div style="font-size:12px;line-height:2;color:var(--text-secondary);">
+      <span class="badge info">提示</span> info - 信息记录<br>
+      <span class="badge warning">警告</span> warning - 需关注<br>
+      <span class="badge critical">严重</span> critical - 紧急处理
+    </div>
+  </div>
+</div>
+
+<!-- 新增规则弹窗 -->
+{% if current_user and current_user.role == 'admin' %}
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('plus') }}新增场景规则</div>
+      <button class="modal-close" onclick="closeModal('addModal')">{{ svg('x') }}</button>
+    </div>
+    <form method="post" action="{{ url_for('scenes_add') }}">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">规则名称 *</label>
+          <input class="form-control" name="name" placeholder="如: 高温自动断电" required maxlength="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">描述</label>
+          <input class="form-control" name="description" placeholder="可选" maxlength="100">
+        </div>
+        <div class="grid-3">
+          <div class="form-group">
+            <label class="form-label">触发采集点 *</label>
+            <select class="form-control" name="trigger_key" id="add_trigger_key" required>
+              {% for k in gateway_keys %}<option value="{{ k }}">{{ k }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">运算符 *</label>
+            <select class="form-control" name="trigger_operator" required>
+              {% for op in operators %}<option value="{{ op }}">{{ op }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">阈值 *</label>
+            <input class="form-control" name="trigger_value" placeholder="如 35" required>
+          </div>
+        </div>
+        <div class="grid-3">
+          <div class="form-group">
+            <label class="form-label">动作类型 *</label>
+            <select class="form-control" name="action_type" id="add_action_type" required onchange="toggleActionFields(this, 'add')">
+              {% for a in actions %}<option value="{{ a }}">{{ action_labels.get(a, a) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" id="add_target_group">
+            <label class="form-label">动作目标 (继电器)</label>
+            <select class="form-control" name="action_target">
+              {% for k in relay_keys %}<option value="{{ k }}">{{ k }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group" id="add_value_group">
+            <label class="form-label">动作值</label>
+            <select class="form-control" name="action_value">
+              <option value="0">0 (关)</option>
+              <option value="1">1 (开)</option>
+            </select>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="form-group">
+            <label class="form-label">告警级别 *</label>
+            <select class="form-control" name="alarm_level" required>
+              {% for l in levels %}<option value="{{ l }}">{{ level_labels.get(l, l) }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">冷却时间(秒)</label>
+            <input class="form-control" name="cooldown_sec" type="number" value="60" min="0" max="3600">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('addModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('plus') }}创建规则</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 编辑规则弹窗 (动态填充) -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('edit') }}编辑场景规则</div>
+      <button class="modal-close" onclick="closeModal('editModal')">{{ svg('x') }}</button>
+    </div>
+    <form method="post" action="" id="editForm">
+      <div class="modal-body" id="editBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('editModal')">取消</button>
+        <button type="submit" class="btn btn-primary">{{ svg('edit') }}保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- 隐藏规则数据 (供 JS 填充编辑弹窗) -->
+<script>
+const RULES = {{ rules | tojson }};
+const GATEWAY_KEYS = {{ gateway_keys | tojson }};
+const RELAY_KEYS = {{ relay_keys | tojson }};
+const OPERATORS = {{ operators | tojson }};
+const ACTIONS = {{ actions | tojson }};
+const ACTION_LABELS = {{ action_labels | tojson }};
+const LEVELS = {{ levels | tojson }};
+const LEVEL_LABELS = {{ level_labels | tojson }};
+
+function toggleActionFields(sel, prefix) {
+  const type = sel.value;
+  const tg = document.getElementById(prefix + '_target_group');
+  const vg = document.getElementById(prefix + '_value_group');
+  if (type === 'set_relay') { tg.style.display=''; vg.style.display=''; }
+  else { tg.style.display='none'; vg.style.display='none'; }
+}
+
+function openEditModal(rid) {
+  const r = RULES.find(x => x.id === rid);
+  if (!r) return;
+  const body = document.getElementById('editBody');
+  const form = document.getElementById('editForm');
+  form.action = `/scenes/${rid}/edit`;
+  let html = '';
+  html += `<div class="form-group"><label class="form-label">规则名称 *</label><input class="form-control" name="name" value="${r.name}" required maxlength="50"></div>`;
+  html += `<div class="form-group"><label class="form-label">描述</label><input class="form-control" name="description" value="${r.description||''}" maxlength="100"></div>`;
+  html += `<div class="grid-3">`;
+  html += `<div class="form-group"><label class="form-label">触发采集点 *</label><select class="form-control" name="trigger_key" required>${GATEWAY_KEYS.map(k=>`<option value="${k}" ${k===r.trigger_key?'selected':''}>${k}</option>`).join('')}</select></div>`;
+  html += `<div class="form-group"><label class="form-label">运算符 *</label><select class="form-control" name="trigger_operator" required>${OPERATORS.map(o=>`<option value="${o}" ${o===r.trigger_operator?'selected':''}>${o}</option>`).join('')}</select></div>`;
+  html += `<div class="form-group"><label class="form-label">阈值 *</label><input class="form-control" name="trigger_value" value="${r.trigger_value}" required></div>`;
+  html += `</div>`;
+  html += `<div class="grid-3">`;
+  html += `<div class="form-group"><label class="form-label">动作类型 *</label><select class="form-control" name="action_type" id="edit_action_type" required onchange="toggleActionFields(this,'edit')">${ACTIONS.map(a=>`<option value="${a}" ${a===r.action_type?'selected':''}>${ACTION_LABELS[a]||a}</option>`).join('')}</select></div>`;
+  html += `<div class="form-group" id="edit_target_group" style="${r.action_type==='set_relay'?'':'display:none;'}"><label class="form-label">动作目标</label><select class="form-control" name="action_target">${RELAY_KEYS.map(k=>`<option value="${k}" ${k===r.action_target?'selected':''}>${k}</option>`).join('')}</select></div>`;
+  html += `<div class="form-group" id="edit_value_group" style="${r.action_type==='set_relay'?'':'display:none;'}"><label class="form-label">动作值</label><select class="form-control" name="action_value"><option value="0" ${r.action_value=='0'?'selected':''}>0 (关)</option><option value="1" ${r.action_value=='1'?'selected':''}>1 (开)</option></select></div>`;
+  html += `</div>`;
+  html += `<div class="grid-2">`;
+  html += `<div class="form-group"><label class="form-label">告警级别 *</label><select class="form-control" name="alarm_level" required>${LEVELS.map(l=>`<option value="${l}" ${l===r.alarm_level?'selected':''}>${LEVEL_LABELS[l]||l}</option>`).join('')}</select></div>`;
+  html += `<div class="form-group"><label class="form-label">冷却时间(秒)</label><input class="form-control" name="cooldown_sec" type="number" value="${r.cooldown_sec}" min="0" max="3600"></div>`;
+  html += `</div>`;
+  html += `<div class="form-group checkbox-row"><input type="checkbox" name="enabled" ${r.enabled?'checked':''}><label style="margin:0;font-size:13px;color:var(--text-secondary);">启用此规则</label></div>`;
+  body.innerHTML = html;
+  openModal('editModal');
+}
+</script>
+{% endblock %}

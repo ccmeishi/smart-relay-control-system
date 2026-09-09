@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+{% block title %}告警管理 - Day10{% endblock %}
+{% block page_title %}场景与告警 / 告警管理{% endblock %}
+{% block content %}
+
+<!-- 告警统计卡片 -->
+<div class="stats-grid">
+  <div class="stat-card red">
+    <div class="stat-header">
+      <div class="stat-label">未确认告警</div>
+      <div class="stat-icon-box red">{{ svg('alert') }}</div>
+    </div>
+    <div class="stat-value" style="color:var(--danger);">{{ stats.active }}</div>
+    <div class="stat-trend" style="color:var(--danger);">需立即处理</div>
+  </div>
+  <div class="stat-card orange">
+    <div class="stat-header">
+      <div class="stat-label">已确认</div>
+      <div class="stat-icon-box orange">{{ svg('check') }}</div>
+    </div>
+    <div class="stat-value" style="color:var(--warning);">{{ stats.acknowledged }}</div>
+    <div class="stat-trend">待清除</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">已清除</div>
+      <div class="stat-icon-box green">{{ svg('check') }}</div>
+    </div>
+    <div class="stat-value" style="color:var(--success);">{{ stats.cleared }}</div>
+    <div class="stat-trend">已归档</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-header">
+      <div class="stat-label">告警总计</div>
+      <div class="stat-icon-box purple">{{ svg('chart') }}</div>
+    </div>
+    <div class="stat-value">{{ stats.total }}</div>
+    <div class="stat-trend">全部记录</div>
+  </div>
+</div>
+
+<!-- 告警级别分布条 -->
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('layers') }}告警级别分布</div>
+  </div>
+  {% set total = stats.total if stats.total > 0 else 1 %}
+  <div style="display:flex;height:24px;border-radius:6px;overflow:hidden;background:var(--bg-tertiary);">
+    {% if stats.info > 0 %}
+    <div style="background:var(--accent);width:{{ (stats.info/total*100)|round }}%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;" title="提示: {{ stats.info }}">
+      {{ stats.info }}
+    </div>{% endif %}
+    {% if stats.warning > 0 %}
+    <div style="background:var(--warning);width:{{ (stats.warning/total*100)|round }}%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;" title="警告: {{ stats.warning }}">
+      {{ stats.warning }}
+    </div>{% endif %}
+    {% if stats.critical > 0 %}
+    <div style="background:var(--danger);width:{{ (stats.critical/total*100)|round }}%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;" title="严重: {{ stats.critical }}">
+      {{ stats.critical }}
+    </div>{% endif %}
+  </div>
+  <div style="display:flex;gap:24px;margin-top:12px;font-size:12px;color:var(--text-secondary);">
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--accent);margin-right:6px;"></span>提示 {{ stats.info }}</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--warning);margin-right:6px;"></span>警告 {{ stats.warning }}</span>
+    <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--danger);margin-right:6px;"></span>严重 {{ stats.critical }}</span>
+  </div>
+</div>
+
+<!-- 告警列表 -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('bell') }}告警记录</div>
+    <div class="actions">
+      <!-- 筛选表单 -->
+      <form method="get" style="display:flex;gap:8px;align-items:center;">
+        <select class="form-control" name="status" style="width:auto;padding:6px 10px;font-size:12px;" onchange="this.form.submit()">
+          <option value="">全部状态</option>
+          <option value="active" {{ 'selected' if cur_status=='active' }}>未确认</option>
+          <option value="acknowledged" {{ 'selected' if cur_status=='acknowledged' }}>已确认</option>
+          <option value="cleared" {{ 'selected' if cur_status=='cleared' }}>已清除</option>
+        </select>
+        <select class="form-control" name="level" style="width:auto;padding:6px 10px;font-size:12px;" onchange="this.form.submit()">
+          <option value="">全部级别</option>
+          <option value="info" {{ 'selected' if cur_level=='info' }}>提示</option>
+          <option value="warning" {{ 'selected' if cur_level=='warning' }}>警告</option>
+          <option value="critical" {{ 'selected' if cur_level=='critical' }}>严重</option>
+        </select>
+      </form>
+      {% if current_user and current_user.role == 'admin' %}
+      <form method="post" action="{{ url_for('alarms_ack_all') }}" style="display:inline;"
+            onsubmit="return confirm('确认所有未确认告警?');">
+        <button type="submit" class="btn btn-sm btn-warning">全部确认</button>
+      </form>
+      <form method="post" action="{{ url_for('alarms_clear_all') }}" style="display:inline;"
+            onsubmit="return confirm('确认清除所有告警? 此操作不可撤销.');">
+        <button type="submit" class="btn btn-sm btn-danger">全部清除</button>
+      </form>
+      <button class="btn btn-sm btn-secondary" onclick="openModal('testModal')">{{ svg('plus') }}测试告警</button>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if alarms %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>级别</th>
+          <th>来源</th>
+          <th>消息</th>
+          <th>触发值</th>
+          <th>状态</th>
+          <th>触发时间</th>
+          <th>确认人</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for a in alarms %}
+        <tr {% if a.status == 'active' and a.level == 'critical' %}style="background:rgba(239,68,68,0.05);"{% endif %}>
+          <td><span class="badge {{ a.level }}">{{ level_labels.get(a.level, a.level) }}</span></td>
+          <td>
+            <div style="font-weight:600;">{{ a.rule_name or '手动产生' }}</div>
+            {% if a.source_key %}<div style="font-size:11px;color:var(--text-muted);">{{ a.source_key }}</div>{% endif %}
+          </td>
+          <td style="max-width:280px;">{{ a.message }}</td>
+          <td><code style="color:var(--warning);">{{ a.source_value }}</code></td>
+          <td>
+            {% if a.status == 'active' %}<span class="badge active">未确认</span>
+            {% elif a.status == 'acknowledged' %}<span class="badge acknowledged">已确认</span>
+            {% else %}<span class="badge cleared">已清除</span>{% endif %}
+          </td>
+          <td style="font-size:11px;color:var(--text-muted);">{{ a.triggered_at }}</td>
+          <td>{{ a.acknowledged_by or '-' }}</td>
+          <td>
+            <div class="actions">
+              {% if current_user and current_user.role == 'admin' %}
+                {% if a.status == 'active' %}
+                <form method="post" action="{{ url_for('alarms_ack', aid=a.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-warning">确认</button>
+                </form>
+                {% endif %}
+                {% if a.status != 'cleared' %}
+                <form method="post" action="{{ url_for('alarms_clear', aid=a.id) }}" style="display:inline;">
+                  <button type="submit" class="btn btn-sm btn-danger">清除</button>
+                </form>
+                {% endif %}
+              {% else %}
+              <span style="color:var(--text-muted);font-size:11px;">只读</span>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="color:var(--text-muted);font-size:13px;padding:40px;text-align:center;">
+    暂无告警记录, 系统运行正常
+  </div>
+  {% endif %}
+</div>
+
+<!-- 测试告警弹窗 -->
+{% if current_user and current_user.role == 'admin' %}
+<div class="modal-overlay" id="testModal">
+  <div class="modal" style="width:420px;">
+    <div class="modal-header">
+      <div class="modal-title">{{ svg('alert') }}手动产生测试告警</div>
+      <button class="modal-close" onclick="closeModal('testModal')">{{ svg('x') }}</button>
+    </div>
+    <form method="post" action="{{ url_for('alarms_test') }}">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">告警级别</label>
+          <select class="form-control" name="level">
+            <option value="info">提示</option>
+            <option value="warning" selected>警告</option>
+            <option value="critical">严重</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">告警消息</label>
+          <input class="form-control" name="message" value="手动测试告警" required>
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);line-height:1.6;">
+          用于验证告警链路是否正常 (Web 显示 + 统计 + 确认/清除流程)
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeModal('testModal')">取消</button>
+        <button type="submit" class="btn btn-warning">{{ svg('alert') }}产生告警</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+{% block title %}在线用户与登录历史 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}系统管理 / 在线用户{% endblock %}
+{% block head_extra %}
+<style>
+  .online-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  .online-card {
+    position: relative;
+    background: linear-gradient(145deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95));
+    border: 1px solid rgba(34,197,94,0.3);
+    border-radius: var(--radius);
+    padding: 20px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .online-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+  .online-card::after {
+    content: ''; position: absolute; right: 0; top: 0; width: 80px; height: 80px;
+    background: radial-gradient(circle, rgba(34,197,94,0.2) 0%, transparent 70%);
+    filter: blur(20px); pointer-events: none;
+  }
+  .online-header {
+    display: flex; align-items: center; gap: 14px; margin-bottom: 16px;
+  }
+  .online-avatar {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--success), #16a34a);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 700; color: white;
+    box-shadow: 0 4px 12px rgba(34,197,94,0.3);
+  }
+  .online-info { flex: 1; }
+  .online-name { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+  .online-role { font-size: 11px; color: var(--success); margin-top: 2px; }
+  .online-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--success);
+    box-shadow: 0 0 8px var(--success);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .online-meta {
+    display: flex; justify-content: space-between;
+    font-size: 12px; color: var(--text-muted);
+    padding-top: 12px; border-top: 1px solid var(--border);
+  }
+  .online-meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .online-meta-label { font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .online-meta-value { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px;
+    color: var(--text-muted); font-size: 13px;
+  }
+  .empty-state .icon { width: 48px; height: 48px; opacity: 0.3; margin-bottom: 12px; }
+
+  .history-table td .user-cell {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .history-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--purple));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: white;
+  }
+  .history-avatar.offline {
+    background: linear-gradient(135deg, var(--text-muted), #475569);
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+<!-- 统计 -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">当前在线</div>
+      <div class="stat-icon-box green">{{ svg('activity') }}</div>
+    </div>
+    <div class="stat-value">{{ online|length }}</div>
+    <div class="stat-trend">实时</div>
+  </div>
+  <div class="stat-card blue">
+    <div class="stat-header">
+      <div class="stat-label">登录记录</div>
+      <div class="stat-icon-box blue">{{ svg('users') }}</div>
+    </div>
+    <div class="stat-value">{{ history|length }}</div>
+    <div class="stat-trend">近 30 条</div>
+  </div>
+</div>
+
+<!-- 在线用户卡片 -->
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('activity') }}在线用户</div>
+    <span class="badge on">{{ online|length }} 人在线</span>
+  </div>
+  {% if online %}
+  <div class="online-grid">
+    {% for s in online %}
+    <div class="online-card">
+      <div class="online-header">
+        <div class="online-avatar">{{ s.username[:1]|upper }}</div>
+        <div class="online-info">
+          <div class="online-name">{{ s.username }}</div>
+          <div class="online-role">用户 ID: {{ s.user_id }}</div>
+        </div>
+        <div class="online-dot"></div>
+      </div>
+      <div class="online-meta">
+        <div class="online-meta-item">
+          <span class="online-meta-label">登录时间</span>
+          <span class="online-meta-value">{{ s.login_at }}</span>
+        </div>
+        <div class="online-meta-item">
+          <span class="online-meta-label">IP 地址</span>
+          <span class="online-meta-value">{{ s.ip or '未知' }}</span>
+        </div>
+        <div class="online-meta-item">
+          <span class="online-meta-label">最后活跃</span>
+          <span class="online-meta-value">{{ s.last_seen }}</span>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-state">
+    {{ svg('users') }}
+    <div>当前无在线用户</div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 登录历史 -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('layers') }}登录历史</div>
+    <span style="font-size:12px;color:var(--text-muted);">最近 30 条记录</span>
+  </div>
+  {% if history %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>用户</th>
+          <th>显示名</th>
+          <th>IP 地址</th>
+          <th>登录时间</th>
+          <th>登出时间</th>
+          <th>最后活跃</th>
+          <th>状态</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in history %}
+        <tr>
+          <td>
+            <div class="user-cell">
+              <div class="history-avatar {{ 'offline' if s.status != 'online' }}">{{ s.username[:1]|upper }}</div>
+              <span style="font-weight:600;">{{ s.username }}</span>
+            </div>
+          </td>
+          <td style="color:var(--text-secondary);">{{ s.display_name or '-' }}</td>
+          <td><code style="color:var(--accent-light);">{{ s.ip or '-' }}</code></td>
+          <td style="color:var(--text-secondary);">{{ s.login_at }}</td>
+          <td style="color:var(--text-secondary);">{{ s.logout_at or '-' }}</td>
+          <td style="color:var(--text-muted);font-size:12px;">{{ s.last_seen }}</td>
+          <td>
+            {% if s.status == 'online' %}
+            <span class="badge on">在线</span>
+            {% else %}
+            <span class="badge off">离线</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    {{ svg('layers') }}
+    <div>暂无登录记录</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block title %}采集点配置 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}设备管理 / 采集点配置{% endblock %}
+{% block head_extra %}
+<style>
+  .config-summary-item {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .config-summary-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .config-summary-value { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+  .config-json {
+    background: rgba(2, 6, 23, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow-x: auto;
+    line-height: 1.6;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .point-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px;
+    font-size: 10px; font-weight: 600;
+  }
+  .point-tag.read { background: rgba(59,130,246,0.12); color: var(--accent-light); }
+  .point-tag.write { background: rgba(245,158,11,0.12); color: var(--warning); }
+
+  /* 编辑模式样式 */
+  .edit-form input, .edit-form select {
+    width: 100%; padding: 6px 8px;
+    background: rgba(2,6,23,0.5);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary); font-size: 12px;
+    font-family: inherit; transition: border-color 0.2s;
+  }
+  .edit-form input:focus, .edit-form select:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.2);
+  }
+  .edit-form input[type="checkbox"] { width: auto; accent-color: var(--accent); }
+  .edit-form input[readonly] { background: var(--bg-tertiary); color: var(--text-muted); }
+  .table-wrap.edit-table table td { padding: 6px 8px; vertical-align: middle; }
+  .add-row-btn {
+    background: rgba(59,130,246,0.1);
+    border: 1px dashed rgba(59,130,246,0.4);
+    color: var(--accent-light);
+    padding: 6px 12px; border-radius: 6px;
+    font-size: 12px; cursor: pointer;
+    transition: all 0.2s;
+  }
+  .add-row-btn:hover { background: rgba(59,130,246,0.2); border-style: solid; }
+  .del-row-btn {
+    background: rgba(239,68,68,0.1);
+    border: 1px solid rgba(239,68,68,0.25);
+    color: var(--danger);
+    padding: 4px 8px; border-radius: 4px;
+    font-size: 11px; cursor: pointer;
+  }
+  .del-row-btn:hover { background: rgba(239,68,68,0.2); }
+  .form-section-title {
+    font-size: 13px; font-weight: 700; color: var(--accent-light);
+    margin: 16px 0 12px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .form-grid-3 {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 12px; margin-bottom: 20px;
+  }
+  .form-grid-3 label { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; display: block; }
+  .save-bar {
+    position: sticky; bottom: 0;
+    background: rgba(15,23,42,0.95);
+    border-top: 1px solid var(--border);
+    padding: 14px 22px; margin: 22px -22px -22px;
+    display: flex; justify-content: space-between; align-items: center;
+    backdrop-filter: blur(8px);
+    z-index: 5;
+  }
+  .save-note { font-size: 12px; color: var(--warning); }
+  @media (max-width: 768px) {
+    .form-grid-3 { grid-template-columns: 1fr; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+
+{% if config %}
+
+<!-- 概览卡片 (只读) -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+  <div class="stat-card blue">
+    <div class="stat-header">
+      <div class="stat-label">WiFi SSID</div>
+      <div class="stat-icon-box blue">{{ svg('globe') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:20px;">{{ config.wifi_ssid or '-' }}</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">设备 ID</div>
+      <div class="stat-icon-box green">{{ svg('cpu') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:20px;">{{ config.device_id or '-' }}</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-header">
+      <div class="stat-label">MQTT 服务器</div>
+      <div class="stat-icon-box purple">{{ svg('link') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:18px;">{{ config.mqtt_host or '-' }}:{{ config.mqtt_port or '-' }}</div>
+  </div>
+  <div class="stat-card orange">
+    <div class="stat-header">
+      <div class="stat-label">Modbus 从站数</div>
+      <div class="stat-icon-box orange">{{ svg('layers') }}</div>
+    </div>
+    <div class="stat-value">{{ config.modbus_slaves|length }}</div>
+  </div>
+</div>
+
+{% if current_user and current_user.role == 'admin' %}
+<!-- 可编辑表单 -->
+<form method="POST" action="{{ url_for('config_points_save') }}" class="edit-form" id="configForm">
+
+<!-- WiFi/MQTT 基础配置 -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}基础配置 (WiFi / MQTT)</div>
+    <span class="badge user">可编辑</span>
+  </div>
+  <div class="form-grid-3">
+    <div>
+      <label>WiFi SSID</label>
+      <input type="text" name="wifi_ssid" value="{{ config.wifi_ssid or '' }}">
+    </div>
+    <div>
+      <label>WiFi 密码</label>
+      <input type="text" name="wifi_pass" value="{{ config.wifi_pass or '' }}">
+    </div>
+    <div>
+      <label>MQTT Host</label>
+      <input type="text" name="mqtt_host" value="{{ config.mqtt_host or '' }}">
+    </div>
+    <div>
+      <label>MQTT Port</label>
+      <input type="number" name="mqtt_port" value="{{ config.mqtt_port or 1883 }}">
+    </div>
+    <div>
+      <label>Product ID</label>
+      <input type="text" name="product_id" value="{{ config.product_id or '' }}">
+    </div>
+    <div>
+      <label>Device ID</label>
+      <input type="text" name="device_id" value="{{ config.device_id or '' }}">
+    </div>
+  </div>
+</div>
+
+<!-- Modbus 采集点 (可编辑) -->
+<div class="card" style="margin-top:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('layers') }}Modbus 采集点</div>
+    <button type="button" class="add-row-btn" onclick="addPointRow()">+ 添加采集点</button>
+  </div>
+
+  {% for slave in config.modbus_slaves %}
+  {% set slave_idx = loop.index0 %}
+  <div style="margin-bottom:20px;">
+    <div class="form-section-title">
+      从站 ID: {{ slave.unit_id or slave.slave_id }} - {{ slave.name or slave.host }}
+      <span style="font-weight:400;color:var(--text-muted);margin-left:8px;font-size:11px;">
+        {{ slave.host }}:{{ slave.port }}
+      </span>
+    </div>
+    <div class="table-wrap edit-table">
+      <table>
+        <thead>
+          <tr>
+            <th style="width:14%;">寄存器地址</th>
+            <th style="width:16%;">采集 Key</th>
+            <th style="width:12%;">周期 (ms)</th>
+            <th style="width:12%;">数据类型</th>
+            <th style="width:10%;">缩放</th>
+            <th style="width:8%;">数量</th>
+            <th style="width:6%;">可写</th>
+            <th style="width:6%;">操作</th>
+          </tr>
+        </thead>
+        <tbody id="slave-{{ slave_idx }}-tbody">
+          {% for pt in slave.points %}
+          <tr data-idx="{{ loop.index0 }}">
+            <td>
+              <input type="text" name="slave_{{ slave_idx }}_addr_{{ loop.index0 }}"
+                     value="{{ '0x%04x'|format(pt.addr|int) }}"
+                     placeholder="0x0000">
+            </td>
+            <td><input type="text" name="slave_{{ slave_idx }}_key_{{ loop.index0 }}" value="{{ pt.key }}" placeholder="temperature"></td>
+            <td><input type="number" name="slave_{{ slave_idx }}_period_ms_{{ loop.index0 }}" value="{{ pt.period_ms }}" min="500" step="100"></td>
+            <td>
+              <select name="slave_{{ slave_idx }}_type_{{ loop.index0 }}">
+                {% for t in ['uint16','int16','uint32','int32','float'] %}
+                <option value="{{ t }}" {% if pt.type == t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="number" name="slave_{{ slave_idx }}_scale_{{ loop.index0 }}" value="{{ pt.scale }}" step="0.1"></td>
+            <td><input type="number" name="slave_{{ slave_idx }}_count_{{ loop.index0 }}" value="{{ pt.count }}" min="1"></td>
+            <td style="text-align:center;">
+              <input type="checkbox" name="slave_{{ slave_idx }}_write_{{ loop.index0 }}" {% if pt.write %}checked{% endif %}>
+            </td>
+            <td style="text-align:center;">
+              <button type="button" class="del-row-btn" onclick="delRow(this)">删除</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+
+  <!-- 保存栏 -->
+  <div class="save-bar">
+    <span class="save-note">
+      {{ svg('alert') }} 保存后 ESP32 设备需要重启才能加载新配置!
+      原配置会自动备份为 config.json.bak
+    </span>
+    <button type="submit" class="btn btn-primary">
+      {{ svg('plus') }}保存配置
+    </button>
+  </div>
+</form>
+
+{% else %}
+<!-- 只读视图 -->
+<div class="card" style="margin-top:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}Modbus 采集点详情</div>
+    <span class="badge off">只读</span>
+  </div>
+  {% for slave in config.modbus_slaves %}
+  <div style="margin-bottom:20px;">
+    <div style="font-size:14px;font-weight:700;color:var(--accent-light);margin-bottom:12px;">
+      从站 ID: {{ slave.unit_id or slave.slave_id }} - {{ slave.name or slave.host }}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>寄存器地址</th><th>采集 Key</th><th>周期 (ms)</th>
+            <th>数据类型</th><th>缩放</th><th>数量</th><th>读写</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pt in slave.points %}
+          <tr>
+            <td><code style="color:var(--warning);">{{ pt.addr }}</code></td>
+            <td style="font-weight:600;">{{ pt.key }}</td>
+            <td>{{ pt.period_ms }}</td>
+            <td><span class="badge user">{{ pt.type }}</span></td>
+            <td>{{ pt.scale }}</td>
+            <td>{{ pt.count }}</td>
+            <td>
+              {% if pt.write %}
+              <span class="point-tag write">可写</span>
+              {% else %}
+              <span class="point-tag read">只读</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- 原始 JSON (始终可见, 普通用户密码已脱敏) -->
+<div class="card" style="margin-top:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('layers') }}原始配置 (JSON)</div>
+    <button class="btn btn-secondary btn-sm" onclick="copyJson()">复制</button>
+  </div>
+  <pre class="config-json" id="jsonBlock">{{ safe_json }}</pre>
+  {% if not is_admin %}
+  <div style="font-size:11px;color:var(--warning);margin-top:8px;">
+    {{ svg('alert') }} 敏感字段 (wifi_pass/mqtt_pass) 已脱敏, 仅管理员可见明文
+  </div>
+  {% endif %}
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}采集点配置</div>
+  </div>
+  <div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;">
+    未找到 config.json 配置文件.<br>
+    请确认 esp32_firmware/config.json 存在.
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function copyJson() {
+    const text = document.getElementById('jsonBlock').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      flashMsg('配置 JSON 已复制到剪贴板', 'success');
+    }).catch(() => {
+      flashMsg('复制失败, 请手动选中复制', 'error');
+    });
+  }
+
+  // 添加新采集点行 (追加到第一个 slave)
+  let newPointCounter = 1000;  // 用大数字避免和现有行冲突
+  function addPointRow() {
+    {% if config and config.modbus_slaves %}
+    const slaveIdx = 0;
+    const tbody = document.getElementById('slave-' + slaveIdx + '-tbody');
+    if (!tbody) return;
+    const pIdx = newPointCounter++;
+    const row = document.createElement('tr');
+    row.dataset.idx = pIdx;
+    row.innerHTML = `
+      <td><input type="text" name="slave_${slaveIdx}_addr_${pIdx}" value="0x0000" placeholder="0x0000"></td>
+      <td><input type="text" name="slave_${slaveIdx}_key_${pIdx}" value="" placeholder="new_point"></td>
+      <td><input type="number" name="slave_${slaveIdx}_period_ms_${pIdx}" value="3000" min="500" step="100"></td>
+      <td>
+        <select name="slave_${slaveIdx}_type_${pIdx}">
+          <option value="uint16" selected>uint16</option>
+          <option value="int16">int16</option>
+          <option value="uint32">uint32</option>
+          <option value="int32">int32</option>
+          <option value="float">float</option>
+        </select>
+      </td>
+      <td><input type="number" name="slave_${slaveIdx}_scale_${pIdx}" value="1" step="0.1"></td>
+      <td><input type="number" name="slave_${slaveIdx}_count_${pIdx}" value="1" min="1"></td>
+      <td style="text-align:center;"><input type="checkbox" name="slave_${slaveIdx}_write_${pIdx}"></td>
+      <td style="text-align:center;"><button type="button" class="del-row-btn" onclick="delRow(this)">删除</button></td>
+    `;
+    tbody.appendChild(row);
+    {% endif %}
+  }
+
+  function delRow(btn) {
+    const tr = btn.closest('tr');
+    tr.remove();
+  }
+
+  function flashMsg(msg, type) {
+    const div = document.createElement('div');
+    div.className = 'flash ' + (type || 'info');
+    div.textContent = msg;
+    const content = document.querySelector('.content');
+    content.insertBefore(div, content.firstChild);
+    setTimeout(() => div.remove(), 4000);
+  }
+</script>
+{% endblock %}

@@ -1718,6 +1718,70 @@ Day9 实测修了 9 个 bug，**完整踩坑记录 + 根因分析 + 修复代码
 
 ---
 
+## 十五、Day10：场景联动 + 告警机制
+
+> **完整详细版见 [simulator/day10/README.md](simulator/day10/README.md)**（面向新手的运行指南、数据库设计、规则执行流程、验收清单）
+
+### 15.1 Day10 解决什么问题
+
+Day9 平台是「被动展示」——数据进来只是展示，设备出问题不会自动处理。Day10 新增**场景规则引擎**和**告警三态流转**，让平台具备「主动联动 + 主动告警」能力：温度过高自动断电、有人自动开灯、烟雾超标紧急告警。
+
+| 对比项 | Day9 | Day10 |
+|--------|------|-------|
+| 数据上报 | 展示 | 展示 + 触发规则评估 |
+| 设备控制 | 手动点击 | 手动 + 自动联动 |
+| 异常处理 | 无 | 规则触发告警 + 自动动作 |
+| 告警管理 | 无 | 三态流转（未确认→已确认→已清除） |
+| SQLite 表 | 4 张 | 6 张（新增 scene_rules + alarm_records） |
+| Web 路由 | 8 个 | 19 个（新增 /scenes /alarms 系列） |
+
+### 15.2 一键运行
+
+```bat
+cd simulator\day10
+start_all.bat
+```
+
+打开 http://127.0.0.1:8081 → 登录 admin/admin123 → 访问 /scenes 和 /alarms。
+
+### 15.3 核心机制
+
+**场景规则结构**：`IF [采集点] [运算符] [阈值] THEN [动作] + 产生 [级别] 告警`
+
+**预填充 4 条示例规则**：
+
+| 规则 | 条件 | 动作 | 级别 |
+|------|------|------|------|
+| 高温自动断电 | temperature > 35 | all_relay_off | critical |
+| 烟雾告警联动 | smoke > 50 | all_relay_off | critical |
+| 有人自动开灯 | human == 1 | set_relay(relay2, 1) | info |
+| 无人自动关灯 | human == 0 | set_relay(relay2, 0) | info |
+
+**告警三态流转**：active（未确认）→ acknowledged（已确认）→ cleared（已清除）
+
+**冷却机制**：规则触发后进入 cooldown_sec 秒冷却期，避免传感器抖动导致频繁触发。
+
+### 15.4 关键技术点
+
+- **规则评估在 Bridge 端**：`evaluate_scene_rules()` 在 `handle_gateway_properties_report()` 中对每个上报的 key 调用，命中后由 `execute_scene_actions()` 执行动作 + 产生告警
+- **动作类型**：set_relay（单路控制）、all_relay_off（全关）、all_relay_on（全开）、send_alarm（仅告警不控制设备）
+- **告警通知双通道**：SQLite 记录（持久化）+ MQTT `/system/alarm/notify` topic（实时通知）
+- **看板角标轮询**：前端每 30 秒调 `/api/alarm-stats`，未确认告警 > 0 时导航栏告警图标显示红色脉冲点
+- **输入校验在 db.py 源头**：规则名称、采集点 key、运算符、告警级别、动作类型全部正则校验，防止绕过 Flask route 直接调用
+
+### 15.5 验证场景联动
+
+```bat
+:: 终端1: 设置温度=36°C (写360, 因为scale=0.1)
+python set_modbus.py 360 600 1 50
+
+:: 终端2: 查看告警
+:: 浏览器打开 http://127.0.0.1:8081/alarms
+:: 看到 critical 告警「高温自动断电」→ 点击确认 → 点击清除
+```
+
+---
+
 ## 附录：ESP32 固件数据流全景
 
 ```
