@@ -26,7 +26,7 @@ from contextlib import contextmanager
 _RE_KEY = re.compile(r'^[a-z0-9_]{1,40}$')      # gateway_key: relay1 / temperature
 _RE_ID  = re.compile(r'^[a-z0-9-]{1,40}$')       # product_id / device_id: lock-cc / lock001
 _RE_PROP = re.compile(r'^[a-z0-9_]{1,40}$')      # property_name: switch / temperature
-_RE_DESC = re.compile(r'^[a-zA-Z0-9_ ,.!?;:\'"()\-\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2000-\u206f\u00b7]{0,100}$')  # description: 允许中文+常用中英标点
+_RE_DESC = re.compile(r'^[a-zA-Z0-9_ %,.!?;:\'"()/\-\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2000-\u206f\u00a0-\u00ff\u2100-\u214f\u0370-\u03ff]{0,100}$')  # description: 允许中文+中英标点+Latin-1(°)+字母符号(℃)+希腊字母(Ωμ)+%//
 _RE_USER = re.compile(r'^[a-zA-Z0-9_]{3,20}$')    # username
 _RE_PASS = re.compile(r'^[\x20-\x7e]{6,64}$')     # password (可打印 ASCII)
 _RE_NAME = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff]{0,30}$')    # display_name
