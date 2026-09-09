@@ -89,6 +89,9 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 </style></head><body>
 <h2>🔌 智能网关配网 (Day9)</h2>
 <div class="sub">单网关 → Python Bridge → 多虚拟产品 (门锁/灯/空调/温湿度/人体/烟雾)</div>
+<div style="background:#78350f;color:#fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6">
+📱 手机连上热点后, 若提示"网络无法访问互联网/当前网络不稳定",<b>请选择"保持连接/仍要连接"</b>, 本页面无需互联网即可使用。
+</div>
 """ + saved_banner + """
 <form method="POST" action="/save" onsubmit="serializeForm()">
 
@@ -173,10 +176,6 @@ function render(){
       h += '<div><label>采集周期(ms)</label><input type="number" value="'+(p.period_ms||3000)+'" oninput="SLAVES['+i+'].points['+j+'].period_ms=+this.value"></div></div>';
       h += '<div class="row"><div><label>缩放系数</label><input type="number" step="0.001" value="'+(p.scale||1)+'" oninput="SLAVES['+i+'].points['+j+'].scale=+this.value"></div>';
       h += '<div><label>寄存器数量</label><input type="number" value="'+(p.count||1)+'" oninput="SLAVES['+i+'].points['+j+'].count=+this.value"></div></div>';
-      h += '<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;display:flex;justify-content:space-between;align-items:center">';
-      h += '<span style="color:#94a3b8;font-size:13px">实时值</span>';
-      h += '<span id="live_'+i+'_'+j+'" data-key="'+(p.key||'')+'" style="color:#22c55e;font-weight:bold;font-size:16px">--</span>';
-      h += '</div>';
       h += '</div>';
     }
     h += '<button type="button" onclick="addPoint('+i+')" style="background:#3b82f6">+ 添加采集点</button>';
@@ -202,43 +201,15 @@ function removePoint(i,j){
 function serializeForm(){
   document.getElementById("mb_json").value = JSON.stringify(SLAVES);
 }
-function refreshRealtime(){
-  fetch("/api/realtime").then(function(r){return r.json();}).then(function(data){
-    for(var i=0;i<SLAVES.length;i++){
-      var pts=SLAVES[i].points||[];
-      for(var j=0;j<pts.length;j++){
-        var el=document.getElementById("live_"+i+"_"+j);
-        if(el){
-          var k=pts[j].key||"";
-          if(data.hasOwnProperty(k)){
-            el.textContent=data[k];
-            el.style.color="#22c55e";
-          }else{
-            el.textContent="--";
-            el.style.color="#64748b";
-          }
-        }
-      }
-    }
-  }).catch(function(){});
-}
 render();
-setInterval(refreshRealtime,2000);
 </script>
 </body></html>"""
 
 
-def start_ap(cfg=None):
-    """开放设备热点, 同时尝试连 WiFi (用于读取 Modbus 实时值)"""
+def start_ap():
+    """开放设备热点, 返回热点名"""
     sta = network.WLAN(network.STA_IF)
-    sta.active(True)
-    # 如果有保存的 WiFi 配置, 尝试连接 (配网时也能读 Modbus)
-    if cfg and cfg.get("wifi_ssid"):
-        try:
-            sta.connect(cfg["wifi_ssid"], cfg.get("wifi_pass", ""))
-            print("[ap] 尝试连接 WiFi:", cfg["wifi_ssid"])
-        except Exception as e:
-            print("[ap] WiFi 连接失败:", e)
+    sta.active(False)
     ap = network.WLAN(network.AP_IF)
     ap.active(False)
     time.sleep_ms(200)
@@ -261,16 +232,7 @@ def run(cfg=None):
     """阻塞运行配网网页服务; 保存成功后自动重启。"""
     if cfg is None:
         cfg = app_config.load() or app_config.defaults()
-    start_ap(cfg)
-
-    # 启动 Modbus 采集 (用于实时值显示)
-    gw = None
-    try:
-        import modbus_gw
-        gw = modbus_gw.init(cfg.get("modbus_slaves", []))
-        print("[ap] Modbus 采集已启动, 共 %d 个采集点" % gw.point_count())
-    except Exception as e:
-        print("[ap] Modbus 启动失败:", e)
+    start_ap()
 
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -279,18 +241,10 @@ def run(cfg=None):
     srv.settimeout(1)
 
     saved = False
-    last_poll = time.ticks_ms()
     while True:
         if saved:
             time.sleep(2)
             machine.reset()
-        # 非阻塞采集 Modbus
-        if gw and time.ticks_diff(time.ticks_ms(), last_poll) >= 500:
-            try:
-                gw.poll_one()
-            except Exception:
-                pass
-            last_poll = time.ticks_ms()
         try:
             cl, _addr = srv.accept()
         except OSError:
@@ -357,12 +311,6 @@ def run(cfg=None):
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                         "Connection: close\r\n\r\n" + html)
                 saved = True
-            elif "GET /api/realtime" in line:
-                # 返回 Modbus 实时采集值
-                vals = gw.collected() if gw else {}
-                resp = json.dumps(vals)
-                cl.send("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
-                        "Connection: close\r\n\r\n" + resp)
             else:
                 html = _html_form(cfg)
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
