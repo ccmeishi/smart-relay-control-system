@@ -176,10 +176,6 @@ function render(){
       h += '<div><label>采集周期(ms)</label><input type="number" value="'+(p.period_ms||3000)+'" oninput="SLAVES['+i+'].points['+j+'].period_ms=+this.value"></div></div>';
       h += '<div class="row"><div><label>缩放系数</label><input type="number" step="0.001" value="'+(p.scale||1)+'" oninput="SLAVES['+i+'].points['+j+'].scale=+this.value"></div>';
       h += '<div><label>寄存器数量</label><input type="number" value="'+(p.count||1)+'" oninput="SLAVES['+i+'].points['+j+'].count=+this.value"></div></div>';
-      h += '<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;display:flex;justify-content:space-between;align-items:center">';
-      h += '<span style="color:#94a3b8;font-size:13px">实时值</span>';
-      h += '<span id="live_'+i+'_'+j+'" data-key="'+(p.key||'')+'" style="color:#22c55e;font-weight:bold;font-size:16px">--</span>';
-      h += '</div>';
       h += '</div>';
     }
     h += '<button type="button" onclick="addPoint('+i+')" style="background:#3b82f6">+ 添加采集点</button>';
@@ -205,43 +201,15 @@ function removePoint(i,j){
 function serializeForm(){
   document.getElementById("mb_json").value = JSON.stringify(SLAVES);
 }
-function refreshRealtime(){
-  fetch("/api/realtime").then(function(r){return r.json();}).then(function(data){
-    for(var i=0;i<SLAVES.length;i++){
-      var pts=SLAVES[i].points||[];
-      for(var j=0;j<pts.length;j++){
-        var el=document.getElementById("live_"+i+"_"+j);
-        if(el){
-          var k=pts[j].key||"";
-          if(data.hasOwnProperty(k)){
-            el.textContent=data[k];
-            el.style.color="#22c55e";
-          }else{
-            el.textContent="--";
-            el.style.color="#64748b";
-          }
-        }
-      }
-    }
-  }).catch(function(){});
-}
 render();
-setInterval(refreshRealtime,2000);
 </script>
 </body></html>"""
 
 
-def start_ap(cfg=None):
-    """开放设备热点, 同时尝试连 WiFi (用于读取 Modbus 实时值)"""
+def start_ap():
+    """开放设备热点, 返回热点名"""
     sta = network.WLAN(network.STA_IF)
-    sta.active(True)
-    # 如果有保存的 WiFi 配置, 尝试连接 (配网时也能读 Modbus)
-    if cfg and cfg.get("wifi_ssid"):
-        try:
-            sta.connect(cfg["wifi_ssid"], cfg.get("wifi_pass", ""))
-            print("[ap] 尝试连接 WiFi:", cfg["wifi_ssid"])
-        except Exception as e:
-            print("[ap] WiFi 连接失败:", e)
+    sta.active(False)
     ap = network.WLAN(network.AP_IF)
     ap.active(False)
     time.sleep_ms(200)
@@ -264,22 +232,7 @@ def run(cfg=None):
     """阻塞运行配网网页服务; 保存成功后自动重启。"""
     if cfg is None:
         cfg = app_config.load() or app_config.defaults()
-    start_ap(cfg)
-
-    # 启动 Modbus 采集 (仅用于实时值显示; 短超时, 按需读取, 不后台轮询)
-    gw = None
-    try:
-        import modbus_gw
-        gw = modbus_gw.init(cfg.get("modbus_slaves", []))
-        # 配网模式用短超时, 避免读取卡住时阻塞网页服务
-        for _c in gw.conns.values():
-            _c.timeout = 0.6
-        # 所有点立即到期 (首次刷新就能读到)
-        for _pt in gw.points:
-            _pt["next_due"] = 0
-        print("[ap] Modbus 就绪, 共 %d 个采集点" % gw.point_count())
-    except Exception as e:
-        print("[ap] Modbus 启动失败:", e)
+    start_ap()
 
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -358,26 +311,6 @@ def run(cfg=None):
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                         "Connection: close\r\n\r\n" + html)
                 saved = True
-            elif "GET /api/realtime" in line:
-                # 按需读取一轮 Modbus (失败的点短超时跳过, 不卡住网页)
-                if gw:
-                    n = gw.point_count()
-                    for _ in range(n + 2):
-                        try:
-                            gw.poll_one()
-                        except Exception:
-                            break
-                        if len(gw.values) >= n:
-                            break
-                    vals = gw.collected()
-                    # 读完后让所有点重新到期, 下次刷新再读一轮
-                    for _pt in gw.points:
-                        _pt["next_due"] = 0
-                else:
-                    vals = {}
-                resp = json.dumps(vals)
-                cl.send("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
-                        "Connection: close\r\n\r\n" + resp)
             else:
                 html = _html_form(cfg)
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
