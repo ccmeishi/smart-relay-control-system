@@ -33,13 +33,13 @@ def _validate(field, value, pattern, label):
     return str(value)
 
 def _validate_mapping_fields(gateway_key, product_id, device_id, property_name, description=""):
-    return (
-        _validate("gateway_key", gateway_key, _RE_KEY, "Gateway Key"),
-        _validate("product_id", product_id, _RE_ID, "Product ID"),
-        _validate("device_id", device_id, _RE_ID, "Device ID"),
-        _validate("property_name", property_name, _RE_PROP, "Property Name"),
-        _validate("description", description or "", _RE_DESC, "Description"),
-    )
+    gateway_key = _validate("gateway_key", gateway_key, _RE_KEY, "Gateway Key")
+    product_id = _validate("product_id", product_id, _RE_ID, "Product ID")
+    device_id = _validate("device_id", device_id, _RE_ID, "Device ID")
+    property_name = _validate("property_name", property_name, _RE_PROP, "Property Name")
+    if description:  # description 可选: 空字符串合法, 非空才校验格式
+        description = _validate("description", description, _RE_DESC, "Description")
+    return gateway_key, product_id, device_id, property_name, description
 
 # 数据库文件路径: day9/db/iot_platform.db
 DB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db")
@@ -249,8 +249,8 @@ def update_mapping(mapping_id, gateway_key=None, product_id=None,
         _validate("device_id", device_id, _RE_ID, "Device ID")
     if property_name is not None:
         _validate("property_name", property_name, _RE_PROP, "Property Name")
-    if description is not None:
-        _validate("description", description or "", _RE_DESC, "Description")
+    if description:  # description 可选: 空字符串合法, 非空才校验格式
+        _validate("description", description, _RE_DESC, "Description")
     fields = []
     values = []
     if gateway_key is not None:

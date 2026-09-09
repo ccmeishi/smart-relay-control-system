@@ -1637,6 +1637,87 @@ python set_modbus.py --smoke 30      # 烟雾等级 0~100
 
 ---
 
+## 十四、Day9：SQLite 动态路由 + Web 管理后台 + 权限系统 + 实物控制台
+
+> **完整详细版见 [simulator/day9/README.md](simulator/day9/README.md)**（面向新手零基础的完整运行指南、代码文件说明、踩坑记录）
+
+### 14.1 Day9 解决什么问题
+
+Day8 时 Bridge 路由表硬编码在 `gateway_bridge.py` 里——每新增一个虚拟设备都要改代码 + 重启。Day9 用 SQLite 做动态路由 + Flask Web 管理后台 + 完整权限系统，让**一块物理网关的 7 个虚拟设备映射关系可以通过浏览器零代码管理**。
+
+| 对比项 | Day8 | Day9 |
+|--------|------|------|
+| 路由表存储 | Python 源码硬编码 | SQLite `db/iot_platform.db` |
+| 新增映射 | 改代码 + 重启 | Web 页面点新增 + Bridge 热刷新（5 秒） |
+| 用户系统 | 无 | admin / user 两角色 + db 层源头校验 |
+| 管理界面 | 无 | Flask 深色主题 Web（8 个页面） |
+| 实物控制台 | 无 | **MQTT 直连下发继电器命令** + 传感器状态缓存 |
+| 在线追踪 | 无 | 登录会话表 + 5 分钟超时 + 新登录踢旧 session |
+| 采集点配置 | 无 | Web 编辑 `config.json` 可视化表单 |
+| 敏感信息 | 无保护 | 普通用户看原始 JSON 时密码脱敏 `******` |
+| MQTT 凭据 | 3 处硬编码 | 统一从 `config.json` 读取（db.py `load_gateway_config()`） |
+
+### 14.2 运行
+
+```powershell
+# 方式 1：一键启动（推荐）
+cd simulator\day9
+start_all.bat   # 自动起 3 个窗口：ModbusSim + Bridge + Web
+
+# 方式 2：手动
+cd simulator\day9
+python db.py                          # 首次建库
+python modbus_slave_sim.py 5502 7     # 模拟器
+python gateway_bridge.py --hot-reload # Bridge + 热刷新
+python web\app.py                     # Web 管理后台
+```
+
+浏览器打开 **http://127.0.0.1:8081**
+
+默认账号：
+- **admin / admin123** — 全部权限
+- **user / user123** — 只读
+
+### 14.3 8 个 Web 页面
+
+| 页面 | URL | admin | user |
+|------|-----|-------|------|
+| 看板 | /dashboard | ✓ 可点击 stat-card 跳转 | ✓ |
+| 实物控制台 | /devices | ✓ 继电器开/关/全关 + 传感器状态 | 只读（看状态，不能点继电器） |
+| 映射管理 | /mappings | ✓ 增/改/删/启用禁用 | 只读（按钮隐藏） |
+| 采集点配置 | /config-points | ✓ 编辑 WiFi/MQTT/Modbus 采集点 | 只读（原始 JSON 密码脱敏） |
+| 在线用户 | /sessions | ✓ 在线列表 + 历史 | ✓ |
+| 用户管理 | /users | ✓ 增/改角色/重置密码/删 | **侧边栏完全隐藏** |
+| 登录 | /login | ✓ | ✓ |
+| 退出 | /logout | ✓ | ✓ |
+
+### 14.4 核心技术点
+
+- **SQLite 动态路由**：`device_mappings` 表存 8 条映射，Bridge 启动加载 + `--hot-reload` 每 5 秒自动刷新
+- **四层 db.py**：`device_mappings` / `users` / `login_sessions` / `device_status`，Bridge 和 Web 共用
+- **三层权限防御**：`@admin_required` 路由装饰器 → 前端 `{% if admin %}` 隐藏按钮 → **db.py 源头正则校验**（任何调用方式都拦）
+- **登录会话管理**：`kick_user_sessions()` 新登录踢旧的 + `list_online_users()` 5 分钟超时过滤
+- **MQTT 凭据统一**：`load_gateway_config()` 函数只从 `config.json` 读，Bridge + Web 都用它
+- **表单正则解析**：多下划线字段（`slave_0_period_ms_0`）用 `re.match(r'^slave_(\d+)_(addr|key|period_ms|type|scale|count|write)_(\d+)$')` 而不是 `split('_')`
+
+### 14.5 踩坑速查
+
+Day9 实测修了 9 个 bug，**完整踩坑记录 + 根因分析 + 修复代码见 [day9/README.md 踩坑章节](simulator/day9/README.md#踩坑记录day9-实测--修复)**：
+
+| 坑 | 严重度 | 一句话 |
+|----|--------|--------|
+| 采集点保存丢 period_ms | 🔴 | `split('_')` 把 `period_ms` 拆成 `['period','ms']` → `int('ms')` 报错跳过整条记录 |
+| 普通用户看密码明文 | 🔴 | 原始 JSON 直接渲染 `config \| tojson` → user 也能看到 `123456` / `yh82922868` |
+| db 层无校验被绕过 | 🔴 | 只在 Flask route 加校验 → 直接 `from db import add_user` 能写脏数据 |
+| 关浏览器后永远在线 | 🟡 | 只认 `status='online'`，没考虑超时 |
+| 同一用户堆 N 条 session | 🟡 | `start_session()` 无条件新建，没踢旧的 |
+| MQTT 3 处硬编码不同步 | 🟡 | 改一处忘改另外两处 |
+| config.json.bak 被 git 追踪 | 🟢 | `.gitignore` 对已追踪文件无效 → `git rm --cached` |
+| 弹窗 DOM 泄露给 user | 🟢 | 按钮隐藏但 HTML 还在 |
+| display_name 可选项被必填校验拦 | 🟢 | `_validate` 的空字符串检查误伤可选字段 |
+
+---
+
 ## 附录：ESP32 固件数据流全景
 
 ```
