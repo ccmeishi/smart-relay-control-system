@@ -52,6 +52,44 @@ RELAY_KEYS = ["relay1", "relay2", "relay3", "relay4"]
 # 告警通知 topic (Web 前端订阅此 topic 实时接收告警)
 ALARM_NOTIFY_TOPIC = "/system/alarm/notify"
 
+# ============================================================
+# 场景动作目标互斥锁 (防止规则冲突: 高温断电关掉后被有人开灯重新打开)
+# 字典: {relay_key: expire_epoch}  过期时间 = now + 触发该锁的规则的 cooldown_sec
+# all_relay_off/all_relay_on 执行后锁定所有继电器
+# set_relay 执行前检查目标 relay 是否被锁, 被锁则跳过
+# ============================================================
+_relay_locks = {}
+_relay_locks_lock = threading.Lock()
+
+# 告警级别优先级 (数值越小优先级越高)
+_LEVEL_PRIORITY = {"critical": 0, "warning": 1, "info": 2}
+
+
+def _lock_relay(target_relay: str, cooldown_sec: int):
+    """锁定单个继电器 cooldown_sec 秒"""
+    with _relay_locks_lock:
+        _relay_locks[target_relay] = time.time() + cooldown_sec
+
+
+def _lock_all_relays(cooldown_sec: int):
+    """锁定全部继电器 cooldown_sec 秒 (all_relay_off/on 后调用)"""
+    with _relay_locks_lock:
+        expire = time.time() + cooldown_sec
+        for k in RELAY_KEYS:
+            _relay_locks[k] = expire
+
+
+def _is_relay_locked(target_relay: str) -> bool:
+    """检查继电器是否被锁 (锁过期则自动清除)"""
+    now = time.time()
+    with _relay_locks_lock:
+        if target_relay in _relay_locks:
+            if _relay_locks[target_relay] > now:
+                return True
+            else:
+                del _relay_locks[target_relay]  # 过期, 清除
+        return False
+
 
 # ============================================================
 # 动态路由表
@@ -186,20 +224,24 @@ def _get_reply_target(bridge_msg_id):
 # Day10 新增: 场景动作执行器
 # ============================================================
 def execute_scene_actions(actions: list):
-    """执行场景规则产生的动作列表.
+    """执行场景规则产生的动作列表 (带优先级排序 + 目标互斥锁).
 
     每个 action:
       {rule_id, rule_name, action_type, action_target, action_value,
-       alarm_level, source_key, source_value}
+       alarm_level, source_key, source_value, cooldown_sec}
 
-    动作类型:
-      - set_relay:     向网关发 properties/write, 控制 action_target=action_value
-      - all_relay_off:  向网关发 properties/write, 所有 relay=0
-      - all_relay_on:   向网关发 properties/write, 所有 relay=1
-      - send_alarm:     仅产生告警记录, 不控制设备
+    冲突解决策略:
+      1. 先按 alarm_level 排序 (critical > warning > info), 高优先级先执行
+      2. all_relay_off/on 执行后锁定全部继电器 cooldown_sec 秒
+      3. set_relay 执行前检查目标是否被锁, 被锁则跳过并打日志
+      4. send_alarm 仅产生告警, 不参与锁机制
     """
     if not actions:
         return
+
+    # ---- 第1步: 按告警级别排序 (critical 优先) ----
+    actions.sort(key=lambda a: _LEVEL_PRIORITY.get(a.get("alarm_level", "warning"), 99))
+
     for act in actions:
         rule_name = act.get("rule_name", "")
         action_type = act.get("action_type", "")
@@ -208,12 +250,15 @@ def execute_scene_actions(actions: list):
         level_label = LEVEL_LABELS.get(level, level)
         source_key = act.get("source_key", "")
         source_value = act.get("source_value", "")
+        cooldown_sec = int(act.get("cooldown_sec", 60))
 
         print(f"[场景] 规则「{rule_name}」命中 ({source_key}={source_value}) "
               f"→ {action_label} [告警级别: {level_label}]")
 
-        # 1. 执行设备控制动作
+        # ---- 第2步: 执行设备控制动作 + 锁检查 ----
         gw_props = None
+        skipped = False
+
         if action_type == "set_relay":
             target = act.get("action_target", "")
             value = act.get("action_value", "0")
@@ -222,11 +267,26 @@ def execute_scene_actions(actions: list):
             except (ValueError, TypeError):
                 val_int = 0
             if target:
-                gw_props = {target: val_int}
+                # 🔑 检查目标继电器是否被锁 (critical 规则的 all_off/on 会锁住)
+                if _is_relay_locked(target):
+                    print(f"  🚫 跳过: {target} 被高优先级规则锁定, 冷却中...")
+                    skipped = True
+                else:
+                    gw_props = {target: val_int}
+                    # set_relay 也锁自己, 防止同级别规则重复覆盖
+                    _lock_relay(target, cooldown_sec)
+
         elif action_type == "all_relay_off":
             gw_props = {k: 0 for k in RELAY_KEYS}
+            # 🔑 锁全部继电器 cooldown_sec 秒, 期间 info 级别 set_relay 不能覆盖
+            _lock_all_relays(cooldown_sec)
+            print(f"  🔒 锁定全部继电器 {cooldown_sec} 秒, 防止被低优先级规则覆盖")
+
         elif action_type == "all_relay_on":
             gw_props = {k: 1 for k in RELAY_KEYS}
+            _lock_all_relays(cooldown_sec)
+            print(f"  🔒 锁定全部继电器 {cooldown_sec} 秒, 防止被低优先级规则覆盖")
+
         # send_alarm: gw_props 保持 None, 仅产生告警
 
         if gw_props:
@@ -244,9 +304,12 @@ def execute_scene_actions(actions: list):
             except Exception as e:
                 print(f"  ! 场景下发失败: {e}")
 
-        # 2. 产生告警记录 + 发布 MQTT 通知
+        # ---- 第3步: 产生告警记录 + 发布 MQTT 通知 ----
+        # (被跳过的动作也要记录告警, 说明规则命中但被冲突抑制)
         msg = f"规则「{rule_name}」触发: {source_key}={source_value}"
-        if gw_props:
+        if skipped:
+            msg += f", 但被更高优先级规则锁定而跳过执行"
+        elif gw_props:
             msg += f", 已执行 {action_label}"
         try:
             alarm_id = create_alarm(

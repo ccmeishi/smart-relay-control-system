@@ -30,7 +30,7 @@ _RE_DESC = re.compile(r'^[a-zA-Z0-9_ %,.!?;:\'"()/\-\u4e00-\u9fff\u3000-\u303f\u
 _RE_USER = re.compile(r'^[a-zA-Z0-9_]{3,20}$')    # username
 _RE_PASS = re.compile(r'^[\x20-\x7e]{6,64}$')     # password (可打印 ASCII)
 _RE_NAME = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff]{0,30}$')    # display_name
-_RE_RULE_NAME = re.compile(r'^[a-zA-Z0-9_\-\u4e00-\u9fff ]{1,50}$')  # 规则名称
+_RE_RULE_NAME = re.compile(r'^[a-zA-Z0-9_\- %,.!?;:\'"()/\u4e00-\u9fff\u3000-\u303f\uff00-\uffef\u2000-\u206f\u00a0-\u00ff\u2100-\u214f\u0370-\u03ff]{1,50}$')  # 规则名称: 同步 _RE_DESC 字符集(允许 °℃Ωμ 等物理符号)
 _RE_OP = re.compile(r'^(>|<|>=|<=|==|!=)$')       # 运算符
 _RE_LEVEL = re.compile(r'^(info|warning|critical)$')  # 告警级别
 _RE_ACTION = re.compile(r'^(set_relay|all_relay_off|all_relay_on|send_alarm)$')  # 动作类型
@@ -709,6 +709,35 @@ def delete_scene_rule(rule_id):
         conn.execute("DELETE FROM scene_rules WHERE id=?", (rule_id,))
 
 
+# ============================================================
+# 稳定计数: 抑制传感器单次抖动 (human 在 0/1 间跳变时, 只连续出现 N 次才触发规则)
+# _sensor_stable = {gateway_key: {"value": last_val, "count": consecutive_count}}
+# STABLE_THRESHOLD: 连续多少次相同值才认为"稳定"并触发规则
+# ============================================================
+_sensor_stable = {}
+STABLE_THRESHOLD = 2  # 连续 2 次相同值才触发 (抑制单次毛刺)
+
+
+def _check_stable(gateway_key, value) -> bool:
+    """检查某采集点的值是否稳定 (连续 STABLE_THRESHOLD 次相同).
+
+    返回 True 表示值已稳定, 可以触发规则; False 表示可能是抖动.
+    """
+    state = _sensor_stable.get(gateway_key)
+    if state is None:
+        # 第一次出现, 初始化
+        _sensor_stable[gateway_key] = {"value": value, "count": 1}
+        return False  # 第一次不稳定, 不触发
+    if str(state["value"]) == str(value):
+        # 值没变, 计数+1
+        state["count"] += 1
+        return state["count"] >= STABLE_THRESHOLD
+    else:
+        # 值变了, 重置计数为 1 (新值第一次出现)
+        _sensor_stable[gateway_key] = {"value": value, "count": 1}
+        return False  # 变化后第一次不稳定
+
+
 def evaluate_scene_rules(gateway_key, value) -> list:
     """评估某采集点变化时, 所有匹配的场景规则.
 
@@ -718,9 +747,17 @@ def evaluate_scene_rules(gateway_key, value) -> list:
         alarm_level, source_key, source_value, cooldown_sec
       }
 
-    内部处理冷却逻辑: 在 cooldown_sec 内的规则不重复触发.
-    触发后会更新 last_triggered + trigger_count.
+    三层防护:
+      1. 稳定计数: 连续 STABLE_THRESHOLD 次相同值才触发 (抑制抖动)
+      2. 冷却检查: 规则在 cooldown_sec 内不重复触发
+      3. 条件评估: operator/value 匹配才触发
+    动作层再加第四层: 动作目标互斥锁 (critical 锁 info)
     """
+    # ---- 第1层: 稳定计数检查 ----
+    if not _check_stable(gateway_key, value):
+        # 值不稳定 (第一次出现或刚变化), 跳过规则评估
+        return []
+
     now_ts = time.time()
     actions = []
     with get_conn() as conn:
@@ -732,22 +769,20 @@ def evaluate_scene_rules(gateway_key, value) -> list:
         rules = [dict(r) for r in rows]
 
         for rule in rules:
-            # 冷却检查: last_triggered 在 cooldown_sec 内 → 跳过
+            # ---- 第2层: 冷却检查 ----
             if rule["last_triggered"]:
-                # SQLite TIMESTAMP 用 UTC, 转成 epoch 比较
                 lt_str = rule["last_triggered"]
                 try:
-                    # SQLite CURRENT_TIMESTAMP 是 UTC, 按 UTC 解析成 epoch
                     import datetime
                     dt = datetime.datetime.strptime(lt_str, "%Y-%m-%d %H:%M:%S")
                     lt_epoch = (dt - datetime.datetime(1970, 1, 1)).total_seconds()
                     elapsed = now_ts - lt_epoch
                     if elapsed < rule["cooldown_sec"]:
-                        continue  # 在冷却期内, 跳过
+                        continue
                 except Exception:
-                    pass  # 解析失败不阻塞, 放行
+                    pass
 
-            # 评估条件
+            # ---- 第3层: 条件评估 ----
             if not _compare(value, rule["trigger_operator"], rule["trigger_value"]):
                 continue
 
