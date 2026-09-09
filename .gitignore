@@ -6,6 +6,7 @@ __pycache__/
 # 运行时生成的数据文件
 sensor_data.json
 relay_data.json
+*.db
 
 # 虚拟环境
 .venv/
@@ -22,6 +23,9 @@ env/
 # TRAE AI 临时文件
 diag_*.txt
 diag_*.json
+
+# impeccable 技能引擎二进制（启动器会自动下载，无需入库）
+.trae-cn/skills/impeccable/scripts/bin/
 
 # OS
 .DS_Store

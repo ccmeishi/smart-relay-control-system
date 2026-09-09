@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}看板 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}首页 / 看板{% endblock %}
+{% block content %}
+
+<!-- 统计卡片 -->
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-header">
+      <div class="stat-label">设备映射总数</div>
+      <div class="stat-icon-box blue">{{ svg('link') }}</div>
+    </div>
+    <div class="stat-value">{{ total_mappings }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">已启用映射</div>
+      <div class="stat-icon-box green">{{ svg('activity') }}</div>
+    </div>
+    <div class="stat-value">{{ enabled_count }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card purple">
+    <div class="stat-header">
+      <div class="stat-label">虚拟产品数</div>
+      <div class="stat-icon-box purple">{{ svg('layers') }}</div>
+    </div>
+    <div class="stat-value">{{ product_stats|length }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card cyan">
+    <div class="stat-header">
+      <div class="stat-label">虚拟设备实例</div>
+      <div class="stat-icon-box cyan">{{ svg('cpu') }}</div>
+    </div>
+    <div class="stat-value">{{ virtual_device_count }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card orange">
+    <div class="stat-header">
+      <div class="stat-label">平台用户</div>
+      <div class="stat-icon-box orange">{{ svg('users') }}</div>
+    </div>
+    <div class="stat-value">{{ user_count }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">在线用户</div>
+      <div class="stat-icon-box green">{{ svg('activity') }}</div>
+    </div>
+    <div class="stat-value">{{ online_count }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+
+  <div class="stat-card red">
+    <div class="stat-header">
+      <div class="stat-label">网关采集点</div>
+      <div class="stat-icon-box red">{{ svg('globe') }}</div>
+    </div>
+    <div class="stat-value">{{ gateway_keys|length }}</div>
+    <div class="stat-trend">实时统计</div>
+  </div>
+</div>
+
+<!-- 中部图表区 -->
+<div class="grid-3" style="margin-bottom:24px;">
+
+  <!-- 设备接入趋势（模拟折线图） -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('chart') }}设备接入趋势</div>
+      <span class="badge user">近 7 天</span>
+    </div>
+    <div class="chart-container">
+      <svg class="chart-svg" viewBox="0 0 300 160" preserveAspectRatio="none">
+        <line x1="30" y1="20" x2="290" y2="20" stroke="rgba(148,163,184,0.1)" stroke-width="1"/>
+        <line x1="30" y1="60" x2="290" y2="60" stroke="rgba(148,163,184,0.1)" stroke-width="1"/>
+        <line x1="30" y1="100" x2="290" y2="100" stroke="rgba(148,163,184,0.1)" stroke-width="1"/>
+        <polyline points="30,120 70,110 110,115 150,85 190,80 230,55 290,30" fill="none" stroke="#3b82f6" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polygon points="30,120 70,110 110,115 150,85 190,80 230,55 290,30 290,140 30,140" fill="rgba(59,130,246,0.12)"/>
+        <circle cx="30" cy="120" r="3" fill="#60a5fa"/>
+        <circle cx="70" cy="110" r="3" fill="#60a5fa"/>
+        <circle cx="110" cy="115" r="3" fill="#60a5fa"/>
+        <circle cx="150" cy="85" r="3" fill="#60a5fa"/>
+        <circle cx="190" cy="80" r="3" fill="#60a5fa"/>
+        <circle cx="230" cy="55" r="3" fill="#60a5fa"/>
+        <circle cx="290" cy="30" r="4" fill="#fff" stroke="#3b82f6" stroke-width="2"/>
+        <line x1="30" y1="20" x2="30" y2="140" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+        <line x1="30" y1="140" x2="290" y2="140" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:var(--text-muted);">
+      <span>09-03</span><span>09-05</span><span>09-08</span>
+    </div>
+  </div>
+
+  <!-- 设备状态分布（环形图） -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('activity') }}设备状态分布</div>
+    </div>
+    <div class="chart-container">
+      <svg class="chart-svg" viewBox="0 0 200 160">
+        <circle cx="80" cy="80" r="55" fill="none" stroke="rgba(71,85,105,0.3)" stroke-width="22"/>
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#22c55e" stroke-width="22" stroke-dasharray="207 138" stroke-dashoffset="0" transform="rotate(-90 80 80)"/>
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#f59e0b" stroke-width="22" stroke-dasharray="86 259" stroke-dashoffset="-207" transform="rotate(-90 80 80)"/>
+        <circle cx="80" cy="80" r="55" fill="none" stroke="#ef4444" stroke-width="22" stroke-dasharray="52 293" stroke-dashoffset="-293" transform="rotate(-90 80 80)"/>
+        <text x="80" y="75" text-anchor="middle" fill="#f8fafc" font-size="22" font-weight="700">{{ virtual_device_count }}</text>
+        <text x="80" y="95" text-anchor="middle" fill="#64748b" font-size="10">设备实例</text>
+        <g transform="translate(155, 55)">
+          <circle cx="0" cy="0" r="3" fill="#22c55e"/><text x="10" y="4" fill="#94a3b8" font-size="11">在线 {{ (virtual_device_count*0.6)|round|int }}</text>
+          <circle cx="0" cy="22" r="3" fill="#f59e0b"/><text x="10" y="26" fill="#94a3b8" font-size="11">离线 {{ (virtual_device_count*0.25)|round|int }}</text>
+          <circle cx="0" cy="44" r="3" fill="#ef4444"/><text x="10" y="50" fill="#94a3b8" font-size="11">告警 {{ (virtual_device_count*0.15)|round|int }}</text>
+        </g>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 告警趋势（模拟） -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('alert') }}告警趋势</div>
+      <span class="badge off">近 7 天</span>
+    </div>
+    <div class="chart-container">
+      <svg class="chart-svg" viewBox="0 0 300 160" preserveAspectRatio="none">
+        <polygon points="30,130 70,120 110,110 150,115 190,90 230,80 290,50" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+        <polygon points="30,130 70,120 110,110 150,115 190,90 230,80 290,50 290,140 30,140" fill="rgba(239,68,68,0.12)"/>
+        <circle cx="30" cy="130" r="3" fill="#fca5a5"/>
+        <circle cx="70" cy="120" r="3" fill="#fca5a5"/>
+        <circle cx="110" cy="110" r="3" fill="#fca5a5"/>
+        <circle cx="150" cy="115" r="3" fill="#fca5a5"/>
+        <circle cx="190" cy="90" r="3" fill="#fca5a5"/>
+        <circle cx="230" cy="80" r="3" fill="#fca5a5"/>
+        <circle cx="290" cy="50" r="4" fill="#fff" stroke="#ef4444" stroke-width="2"/>
+        <line x1="30" y1="20" x2="30" y2="140" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+        <line x1="30" y1="140" x2="290" y2="140" stroke="rgba(148,163,184,0.2)" stroke-width="1"/>
+      </svg>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:10px;font-size:11px;color:var(--text-muted);">
+      <span>09-03</span><span>09-05</span><span>09-08</span>
+    </div>
+  </div>
+</div>
+
+<!-- 下部分区 -->
+<div class="grid-2">
+
+  <!-- 网关侧采集点 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('globe') }}网关侧采集点</div>
+      <a href="{{ url_for('mappings_list') }}" class="btn-link">查看全部</a>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>采集点</th><th>描述</th></tr></thead>
+        <tbody>
+          {% for k, desc in gateway_keys.items() %}
+          <tr>
+            <td><code style="color:var(--accent-light);">{{ k }}</code></td>
+            <td style="color:var(--text-secondary);">{{ desc }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 虚拟产品分布 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">{{ svg('layers') }}虚拟产品分布</div>
+      <span style="font-size:12px;color:var(--text-muted);">按映射数量</span>
+    </div>
+    {% if product_stats %}
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        {% for pid, cnt in product_stats.items() %}
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+            <span style="font-weight:600;">{{ pid }}</span>
+            <span style="color:var(--accent-light);font-weight:700;">{{ cnt }}</span>
+          </div>
+          <div style="background:var(--bg-tertiary);border-radius:4px;height:8px;overflow:hidden;">
+            <div style="background:linear-gradient(90deg,var(--accent),var(--purple));height:100%;width:{{ (cnt/enabled_count*100)|round }}%;"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div style="color:var(--text-muted);font-size:13px;padding:20px;text-align:center;">暂无启用的映射</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- 快捷入口 -->
+<div class="grid-3" style="margin-bottom:24px;">
+  <a href="{{ url_for('devices_console') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('cpu') }}实物控制台</div>
+      {{ svg('zap') }}
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      继电器开关 / 传感器读数 / 一键全开全关<br>
+      <span style="color:var(--text-muted);font-size:11px;">通过 MQTT 直接控制 ESP32 网关</span>
+    </div>
+  </a>
+
+  <a href="{{ url_for('config_points') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('settings') }}采集点配置</div>
+      {{ svg('layers') }}
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      Modbus 寄存器 / 周期 / 类型 / 缩放<br>
+      <span style="color:var(--text-muted);font-size:11px;">来源: esp32_firmware/config.json</span>
+    </div>
+  </a>
+
+  {% if current_user and current_user.role == 'admin' %}
+  <a href="{{ url_for('sessions_list') }}" class="card" style="text-decoration:none;color:inherit;transition:transform 0.2s;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('activity') }}在线用户</div>
+      <span class="badge on">{{ online_count }} 人</span>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);line-height:1.6;">
+      在线用户 / 登录历史 / IP 追踪<br>
+      <span style="color:var(--text-muted);font-size:11px;">管理员专属: 查看谁在线</span>
+    </div>
+  </a>
+  {% else %}
+  <div class="card" style="opacity:0.5;">
+    <div class="card-header">
+      <div class="card-title">{{ svg('activity') }}在线用户</div>
+      <span class="badge off">需管理员</span>
+    </div>
+    <div style="font-size:13px;color:var(--text-muted);line-height:1.6;">
+      在线用户 / 登录历史追踪<br>
+      <span style="font-size:11px;">仅管理员可访问</span>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- 场景执行占位（Day10 对接） -->
+<div class="card" style="margin-top:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('zap') }}场景执行统计</div>
+    <span class="badge off">Day10 上线</span>
+  </div>
+  <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px;">
+    规则引擎 / 场景联动 / 告警触发 将于 Day10 接入本平台
+  </div>
+</div>
+
+{% endblock %}

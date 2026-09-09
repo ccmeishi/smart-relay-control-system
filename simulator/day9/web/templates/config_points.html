@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% block title %}采集点配置 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}设备管理 / 采集点配置{% endblock %}
+{% block head_extra %}
+<style>
+  .config-section {
+    margin-bottom: 24px;
+  }
+  .config-card {
+    background: linear-gradient(145deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+  }
+  .config-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  .config-summary-item {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+  .config-summary-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .config-summary-value { font-size: 18px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+  .config-json {
+    background: rgba(2, 6, 23, 0.6);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px;
+    font-family: "Cascadia Code", "Fira Code", Consolas, monospace;
+    font-size: 12px;
+    color: var(--text-secondary);
+    overflow-x: auto;
+    line-height: 1.6;
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .json-key { color: var(--accent-light); }
+  .json-string { color: var(--success); }
+  .json-number { color: var(--warning); }
+  .json-bool { color: var(--purple); }
+  .point-tag {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 12px;
+    font-size: 10px; font-weight: 600;
+  }
+  .point-tag.read { background: rgba(59,130,246,0.12); color: var(--accent-light); }
+  .point-tag.write { background: rgba(245,158,11,0.12); color: var(--warning); }
+</style>
+{% endblock %}
+{% block content %}
+
+{% if config %}
+
+<!-- 概览卡片 -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));">
+  <div class="stat-card blue">
+    <div class="stat-header">
+      <div class="stat-label">WiFi SSID</div>
+      <div class="stat-icon-box blue">{{ svg('globe') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:20px;">{{ config.wifi_ssid or '-' }}</div>
+  </div>
+  <div class="stat-card green">
+    <div class="stat-header">
+      <div class="stat-label">设备 ID</div>
+      <div class="stat-icon-box green">{{ svg('cpu') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:20px;">{{ config.device_id or '-' }}</div>
+  </div>
+  <div class="stat-card purple">
+    <div class="stat-header">
+      <div class="stat-label">MQTT 服务器</div>
+      <div class="stat-icon-box purple">{{ svg('link') }}</div>
+    </div>
+    <div class="stat-value" style="font-size:18px;">{{ config.mqtt_host or '-' }}:{{ config.mqtt_port or '-' }}</div>
+  </div>
+  <div class="stat-card orange">
+    <div class="stat-header">
+      <div class="stat-label">Modbus 从站数</div>
+      <div class="stat-icon-box orange">{{ svg('layers') }}</div>
+    </div>
+    <div class="stat-value">{{ config.modbus_slaves|length }}</div>
+  </div>
+</div>
+
+<!-- 采集点详情 -->
+<div class="card config-section">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}Modbus 采集点详情</div>
+    <span style="font-size:12px;color:var(--text-muted);">来源: esp32_firmware/config.json</span>
+  </div>
+  {% for slave in config.modbus_slaves %}
+  <div style="margin-bottom:24px;">
+    <div style="font-size:14px;font-weight:700;color:var(--accent-light);margin-bottom:12px;">
+      从站 ID: {{ slave.unit_id or slave.slave_id }} - {{ slave.name or slave.host }}
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>寄存器地址</th>
+            <th>采集 Key</th>
+            <th>周期 (ms)</th>
+            <th>数据类型</th>
+            <th>缩放</th>
+            <th>数量</th>
+            <th>读写</th>
+            <th>映射到</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pt in slave.points %}
+          <tr>
+            <td><code style="color:var(--warning);">{{ pt.addr }}</code></td>
+            <td style="font-weight:600;">{{ pt.key }}</td>
+            <td>{{ pt.period_ms }}</td>
+            <td><span class="badge user">{{ pt.type }}</span></td>
+            <td>{{ pt.scale }}</td>
+            <td>{{ pt.count }}</td>
+            <td>
+              {% if pt.write %}
+              <span class="point-tag write">可写</span>
+              {% else %}
+              <span class="point-tag read">只读</span>
+              {% endif %}
+            </td>
+            <td style="color:var(--text-muted);font-size:12px;">{{ pt.map_to or '-' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 原始 JSON -->
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('layers') }}原始配置 (JSON)</div>
+    <button class="btn btn-secondary btn-sm" onclick="copyJson()">复制</button>
+  </div>
+  <pre class="config-json" id="jsonBlock">{{ config | tojson(indent=2) }}</pre>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}采集点配置</div>
+  </div>
+  <div style="text-align:center;padding:40px 20px;color:var(--text-muted);font-size:13px;">
+    未找到 config.json 配置文件.<br>
+    请确认 esp32_firmware/config.json 存在.
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function copyJson() {
+    const text = document.getElementById('jsonBlock').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+      alert('配置 JSON 已复制到剪贴板');
+    }).catch(() => {
+      alert('复制失败, 请手动选中复制');
+    });
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% block title %}实物控制台 - Day9 IoT 管理平台{% endblock %}
+{% block page_title %}设备管理 / 实物控制台{% endblock %}
+{% block head_extra %}
+<style>
+  .relay-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  .relay-card {
+    position: relative;
+    background: linear-gradient(145deg, rgba(30,41,59,0.9), rgba(15,23,42,0.95));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .relay-card:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(0,0,0,0.4); }
+  .relay-card.on {
+    border-color: rgba(34,197,94,0.4);
+    box-shadow: 0 0 20px rgba(34,197,94,0.15), 0 8px 32px rgba(0,0,0,0.35);
+  }
+  .relay-card.on::after {
+    content: ''; position: absolute; right: 0; top: 0; width: 100px; height: 100px;
+    background: radial-gradient(circle, rgba(34,197,94,0.25) 0%, transparent 70%);
+    filter: blur(20px); pointer-events: none;
+  }
+  .relay-card.off {
+    border-color: rgba(100,116,139,0.3);
+  }
+  .relay-card.disabled { opacity: 0.5; pointer-events: none; }
+  .relay-header {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 16px;
+  }
+  .relay-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .relay-desc { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-top: 4px; }
+  .relay-key { font-size: 11px; color: var(--accent-light); margin-top: 2px; font-family: monospace; }
+  .relay-icon-box {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid rgba(255,255,255,0.08);
+  }
+  .relay-icon-box.on {
+    background: rgba(34,197,94,0.15);
+  }
+  .relay-icon-box.on .icon { color: var(--success); }
+  .relay-icon-box.off {
+    background: rgba(100,116,139,0.15);
+  }
+  .relay-icon-box.off .icon { color: var(--text-muted); }
+  .relay-body {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .relay-status { font-size: 24px; font-weight: 800; }
+  .relay-status.on { color: var(--success); }
+  .relay-status.off { color: var(--text-muted); }
+  .relay-updated { font-size: 10px; color: var(--text-muted); }
+  .relay-toggle-btn {
+    width: 100%; padding: 10px;
+    border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: none; cursor: pointer; transition: all 0.2s;
+    font-family: inherit;
+  }
+  .relay-toggle-btn.on {
+    background: rgba(239,68,68,0.12); color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.25);
+  }
+  .relay-toggle-btn.on:hover { background: rgba(239,68,68,0.2); }
+  .relay-toggle-btn.off {
+    background: linear-gradient(135deg, var(--success), #16a34a); color: white;
+    box-shadow: 0 4px 14px rgba(34,197,94,0.3);
+  }
+  .relay-toggle-btn.off:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(34,197,94,0.4); }
+  .relay-toggle-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .sensor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 18px;
+    margin-bottom: 24px;
+  }
+  .sensor-card {
+    background: linear-gradient(145deg, rgba(30,41,59,0.9), rgba(15,23,42,0.9));
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    transition: transform 0.2s;
+  }
+  .sensor-card:hover { transform: translateY(-2px); }
+  .sensor-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+  .sensor-label { font-size: 12px; color: var(--text-muted); font-weight: 500; }
+  .sensor-desc { font-size: 14px; font-weight: 700; margin-top: 4px; }
+  .sensor-icon-box {
+    width: 40px; height: 40px; border-radius: 10px;
+    background: rgba(96,165,250,0.1);
+    border: 1px solid rgba(96,165,250,0.15);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sensor-icon-box .icon { color: var(--accent-light); }
+  .sensor-value { font-size: 28px; font-weight: 800; color: var(--text-primary); }
+  .sensor-unit { font-size: 13px; color: var(--text-muted); margin-left: 4px; }
+  .sensor-updated { font-size: 10px; color: var(--text-muted); margin-top: 8px; }
+
+  .all-controls {
+    display: flex; gap: 12px; margin-bottom: 24px;
+  }
+  .all-btn {
+    flex: 1; padding: 14px;
+    border-radius: var(--radius); font-size: 14px; font-weight: 700;
+    border: none; cursor: pointer; transition: all 0.2s;
+    font-family: inherit;
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .all-btn.all-on {
+    background: linear-gradient(135deg, var(--success), #16a34a); color: white;
+    box-shadow: 0 4px 14px rgba(34,197,94,0.3);
+  }
+  .all-btn.all-on:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(34,197,94,0.4); }
+  .all-btn.all-off {
+    background: rgba(239,68,68,0.12); color: var(--danger);
+    border: 1px solid rgba(239,68,68,0.25);
+  }
+  .all-btn.all-off:hover { background: rgba(239,68,68,0.2); }
+  .all-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .conn-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600;
+  }
+  .conn-status.online { background: rgba(34,197,94,0.15); color: var(--success); }
+  .conn-status.offline { background: rgba(100,116,139,0.15); color: var(--text-muted); }
+  .conn-status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+  .conn-status.online::before { background: var(--success); box-shadow: 0 0 6px var(--success); }
+  .conn-status.offline::before { background: var(--text-muted); }
+</style>
+{% endblock %}
+{% block content %}
+
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('cpu') }}实物控制台</div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span id="mqttStatus" class="conn-status offline">MQTT 未连接</span>
+      <span style="font-size:12px;color:var(--text-muted);">网关: relay-cc/relaycc</span>
+    </div>
+  </div>
+  <div style="font-size:13px;color:var(--text-secondary);line-height:1.7;">
+    通过 MQTT 直接向 ESP32 网关下发继电器开关命令, 并实时展示传感器采集值.
+    仅管理员可控制, 普通用户可查看. 数据由 Bridge 同步缓存至数据库.
+  </div>
+</div>
+
+{% if current_user and current_user.role == 'admin' %}
+<div class="all-controls">
+  <button class="all-btn all-on" id="btnAllOn" onclick="toggleAll('on')">
+    {{ svg('zap') }}一键全开
+  </button>
+  <button class="all-btn all-off" id="btnAllOff" onclick="toggleAll('off')">
+    {{ svg('log-out') }}一键全关
+  </button>
+</div>
+{% endif %}
+
+<!-- 继电器卡片 -->
+<div class="relay-grid" id="relayGrid">
+  {% for r in relay_cards %}
+  <div class="relay-card {{ 'on' if r.value == 1 else 'off' }}{{ ' disabled' if not r.enabled else '' }}" data-key="{{ r.key }}">
+    <div class="relay-header">
+      <div>
+        <div class="relay-label">继电器 {{ loop.index }}</div>
+        <div class="relay-desc">{{ r.desc or r.key }}</div>
+        <div class="relay-key">{{ r.key }} → {{ r.product }}/{{ r.device }}</div>
+      </div>
+      <div class="relay-icon-box {{ 'on' if r.value == 1 else 'off' }}">
+        {{ svg('zap') }}
+      </div>
+    </div>
+    <div class="relay-body">
+      <div>
+        <div class="relay-status {{ 'on' if r.value == 1 else 'off' }}" id="status-{{ r.key }}">
+          {{ '闭合' if r.value == 1 else '断开' }}
+        </div>
+        <div class="relay-updated" id="updated-{{ r.key }}">
+          {{ r.updated_at or '暂无上报' }}
+        </div>
+      </div>
+      {% if not r.enabled %}
+      <span class="badge off">已禁用</span>
+      {% endif %}
+    </div>
+    {% if current_user and current_user.role == 'admin' %}
+    <button class="relay-toggle-btn {{ 'on' if r.value == 1 else 'off' }}"
+            data-key="{{ r.key }}" data-current="{{ r.value }}"
+            onclick="toggleRelay(this)"
+            {{ 'disabled' if not r.enabled else '' }}>
+      {{ '关闭继电器' if r.value == 1 else '开启继电器' }}
+    </button>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<!-- 传感器读数 -->
+<div class="card" style="margin-bottom:24px;">
+  <div class="card-header">
+    <div class="card-title">{{ svg('activity') }}传感器实时读数</div>
+    <span style="font-size:12px;color:var(--text-muted);">每 3 秒自动刷新</span>
+  </div>
+  <div class="sensor-grid">
+    {% for s in sensor_cards %}
+    <div class="sensor-card">
+      <div class="sensor-header">
+        <div>
+          <div class="sensor-label">{{ s.desc or s.key }}</div>
+          <div style="font-size:11px;color:var(--accent-light);margin-top:2px;font-family:monospace;">{{ s.key }}</div>
+        </div>
+        <div class="sensor-icon-box">{{ svg('activity') }}</div>
+      </div>
+      <div>
+        <span class="sensor-value" id="sensor-val-{{ s.key }}">{{ s.value }}</span>
+        <span class="sensor-unit">{{ s.unit }}</span>
+      </div>
+      <div class="sensor-updated" id="sensor-updated-{{ s.key }}">{{ s.updated_at or '暂无上报' }}</div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Modbus 采集点配置 (只读) -->
+{% if modbus_points %}
+<div class="card">
+  <div class="card-header">
+    <div class="card-title">{{ svg('settings') }}Modbus 采集点配置 (config.json)</div>
+    <a href="{{ url_for('config_points') }}" class="btn-link">查看完整配置</a>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>从站 ID</th><th>寄存器地址</th><th>采集 Key</th><th>周期 (ms)</th><th>数据类型</th><th>缩放</th><th>数量</th></tr>
+      </thead>
+      <tbody>
+        {% for pt in modbus_points %}
+        <tr>
+          <td><code style="color:var(--accent-light);">{{ pt.slave_id }}</code></td>
+          <td><code style="color:var(--warning);">{{ pt.addr }}</code></td>
+          <td style="font-weight:600;">{{ pt.key }}</td>
+          <td>{{ pt.period_ms }}</td>
+          <td><span class="badge user">{{ pt.type }}</span></td>
+          <td>{{ pt.scale }}</td>
+          <td>{{ pt.count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 继电器单控
+  function toggleRelay(btn) {
+    const key = btn.dataset.key;
+    const current = parseInt(btn.dataset.current);
+    const targetVal = current === 1 ? 0 : 1;
+    btn.disabled = true;
+    btn.textContent = '下发中...';
+
+    const formData = new FormData();
+    formData.append('key', key);
+    formData.append('value', targetVal);
+
+    fetch('{{ url_for("devices_toggle") }}', { method: 'POST', body: formData })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          flashMsg(data.msg, 'success');
+          setTimeout(() => pollStatus(), 2000);
+        } else {
+          flashMsg(data.msg || '操作失败', 'error');
+        }
+      })
+      .catch(err => flashMsg('网络错误: ' + err, 'error'))
+      .finally(() => {
+        btn.disabled = false;
+      });
+  }
+
+  // 一键全开/全关
+  function toggleAll(action) {
+    const btn = action === 'on' ? document.getElementById('btnAllOn') : document.getElementById('btnAllOff');
+    if (btn) { btn.disabled = true; }
+    const formData = new FormData();
+    formData.append('action', action);
+
+    fetch('{{ url_for("devices_all") }}', { method: 'POST', body: formData })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          flashMsg(data.msg, 'success');
+          setTimeout(() => pollStatus(), 2000);
+        } else {
+          flashMsg(data.msg || '操作失败', 'error');
+        }
+      })
+      .catch(err => flashMsg('网络错误: ' + err, 'error'))
+      .finally(() => {
+        if (btn) { btn.disabled = false; }
+      });
+  }
+
+  // 轮询设备状态
+  function pollStatus() {
+    fetch('{{ url_for("api_device_status") }}')
+      .then(r => r.json())
+      .then(data => {
+        const relayKeys = {{ relay_cards | map(attribute='key') | list | tojson }};
+        relayKeys.forEach(key => {
+          const st = data[key];
+          if (!st) return;
+          const val = parseInt(st.value);
+          const card = document.querySelector('.relay-card[data-key="' + key + '"]');
+          if (card) {
+            card.classList.remove('on', 'off');
+            card.classList.add(val === 1 ? 'on' : 'off');
+            const statusEl = document.getElementById('status-' + key);
+            if (statusEl) {
+              statusEl.textContent = val === 1 ? '闭合' : '断开';
+              statusEl.classList.remove('on', 'off');
+              statusEl.classList.add(val === 1 ? 'on' : 'off');
+            }
+            const updatedEl = document.getElementById('updated-' + key);
+            if (updatedEl) updatedEl.textContent = st.updated_at || '暂无上报';
+            const btn = card.querySelector('.relay-toggle-btn');
+            if (btn) {
+              btn.dataset.current = val;
+              btn.textContent = val === 1 ? '关闭继电器' : '开启继电器';
+              btn.classList.remove('on', 'off');
+              btn.classList.add(val === 1 ? 'on' : 'off');
+            }
+          }
+        });
+
+        const sensorKeys = {{ sensor_cards | map(attribute='key') | list | tojson }};
+        sensorKeys.forEach(key => {
+          const st = data[key];
+          if (!st) return;
+          const valEl = document.getElementById('sensor-val-' + key);
+          if (valEl) valEl.textContent = st.value;
+          const updatedEl = document.getElementById('sensor-updated-' + key);
+          if (updatedEl) updatedEl.textContent = st.updated_at || '暂无上报';
+        });
+      })
+      .catch(err => console.error('poll error:', err));
+  }
+
+  // Flash 消息
+  function flashMsg(msg, type) {
+    const div = document.createElement('div');
+    div.className = 'flash ' + (type || 'info');
+    div.textContent = msg;
+    const content = document.querySelector('.content');
+    content.insertBefore(div, content.firstChild);
+    setTimeout(() => div.remove(), 4000);
+  }
+
+  // 每 3 秒轮询
+  setInterval(pollStatus, 3000);
+</script>
+{% endblock %}
