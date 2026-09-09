@@ -1,6 +1,6 @@
 # 智能继电器控制系统
 
-> Day1 ~ Day9 完整记录 | ESP32-C3 + MicroPython + Modbus + MQTT + Python Bridge + JetLinks
+> Day1 ~ Day8 完整记录 | ESP32-C3 + MicroPython + Modbus + MQTT + Python Bridge + JetLinks
 
 ---
 
@@ -45,7 +45,7 @@ Python Bridge 干 2 件事：
 1. **上行拆分**：订阅网关的混在一起的数据，按路由表拆成 6 个虚拟产品分别上报
 2. **下行回流**：平台对虚拟产品（比如门锁、灯）的控制指令，路由回网关对应的继电器
 
-> 📌 **Day8/Day9 是重点**：前面 Day1~7 都是"一块板子 = 平台上一个设备"。Day8/9 引入 Bridge，让**一块物理板子在平台上呈现为多个不同类型的智能设备**，这是真实工业网关的典型用法。详见 [第十三章 Day8/9](#十三day8day9网关--bridge一台板子变六个设备)。
+> 📌 **Day8 是重点**：前面 Day1~7 都是"一块板子 = 平台上一个设备"。Day8 引入 Bridge，让**一块物理板子在平台上呈现为多个不同类型的智能设备**，这是真实工业网关的典型用法。详见 [第十三章 Day8](#十三day8网关--bridge一台板子变六个设备)。
 
 ### 接线（ESP32-C3 四路继电器开发板）
 
@@ -125,7 +125,7 @@ python modbus_slave_sim.py 5502 7
 
 ### 寄存器布局
 
-> Day8/9 后模拟器扩展为多传感器，寄存器布局如下（`simulator/tools/modbus_slave_sim.py`）：
+> Day8 后模拟器扩展为多传感器，寄存器布局如下（`simulator/tools/modbus_slave_sim.py`）：
 
 | 寄存器 | 名称 | 格式 | 初始值 | 飘动方式 |
 |--------|------|------|--------|---------|
@@ -406,7 +406,7 @@ BOOT v12 start
 [ap] 手机连热点后打开 http://192.168.4.1
 ```
 
-> ⚠️ **Day8/9 重要改动**：长按后板子不是"当场切热点"，而是**写一个标记文件然后自动重启**，重启后在干净状态下进入配网。这是因为运行中直接把 WiFi 从联网模式切成热点模式时，MQTT/Modbus 的网络连接还开着，会导致板子挂死（热点开不出来）。详见 [11.7 配网页面打不开](#117-配网页面打不开)。
+> ⚠️ **Day8 重要改动**：长按后板子不是"当场切热点"，而是**写一个标记文件然后自动重启**，重启后在干净状态下进入配网。这是因为运行中直接把 WiFi 从联网模式切成热点模式时，MQTT/Modbus 的网络连接还开着，会导致板子挂死（热点开不出来）。详见 [11.7 配网页面打不开](#117-配网页面打不开)。
 
 #### 进入配网模式的两种方式
 
@@ -1228,7 +1228,7 @@ Topic: /relay-cc/relaycc/properties/read
 
 ### 11.7 配网页面打不开 / 热点连不上
 
-这是 Day8/9 踩得最多的坑，按现象对号入座：
+这是 Day8 踩得最多的坑，按现象对号入座：
 
 #### 现象 A：长按后串口停在"SW1 长按5秒"，没有"热点已开放"，板子像死机
 
@@ -1279,7 +1279,7 @@ Topic: /relay-cc/relaycc/properties/read
 | 文件写入非原子 | 先写 .tmp 再 os.rename() |
 | 不能真正多线程 | 单主循环 + 事件驱动 |
 
-### 11.9 Day8/9 Bridge / 虚拟产品相关坑
+### 11.9 Day8 Bridge / 虚拟产品相关坑
 
 | 现象 | 根因 | 解决 |
 |------|------|------|
@@ -1290,7 +1290,7 @@ Topic: /relay-cc/relaycc/properties/read
 | 平台点门锁/灯，板子继电器**没反应** | Bridge 没在跑，或下行 topic 没订阅 | 确认 Bridge 窗口开着、打印了"订阅虚拟下行: xxx"；看 Bridge 有没有打印 `↓ ... → gateway {relayN: x}` |
 | 人体/烟雾数据**一直不变** | 旧版模拟器没有人体/烟雾飘动 | 飘动已做到 ESP32 端，刷最新固件即可，不依赖模拟器版本 |
 
-### 11.10 刷机 / 上传固件相关坑（Day8/9 实测）
+### 11.10 刷机 / 上传固件相关坑（Day8 实测）
 
 | 现象 | 根因 | 解决 |
 |------|------|------|
@@ -1349,9 +1349,9 @@ Topic: /relay-cc/relaycc/properties/read
   3. 双击 esp32\start_serial.bat     ← 看板子日志确认 Modbus 数据
 ```
 
-**场景 D：⭐ Day8/9 网关 + Bridge（一块板子变六个虚拟设备）**
+**场景 D：⭐ Day8 网关 + Bridge（一块板子变六个虚拟设备）**
 ```
-前置: 板子已刷 Day8/9 固件并配好网(能连 MQTT + Modbus 模拟器)
+前置: 板子已刷 Day8 固件并配好网(能连 MQTT + Modbus 模拟器)
   1. 双击 simulator\tools\start_all.bat
        → 自动弹两个窗口: ModbusSim(模拟器) + Bridge(协议转换)
   2. JetLinks 上确认 6 个虚拟产品(lock/light/ac/sensor/human/smoke)都建好
@@ -1456,13 +1456,13 @@ python -m mpremote connect COM5 exec "import app_config; print(app_config.load()
 
 ---
 
-## 十三、Day8/Day9：网关 + Bridge（一台板子变六个设备）
+## 十三、Day8：网关 + Bridge（一台板子变六个设备）
 
-![Day8/9 网关+Bridge 架构]
+![Day8 网关+Bridge 架构]
 
 前面 Day1~7，一块 ESP32 板子在 JetLinks 上就是**一个设备**（产品 `relay-cc` / 设备 `relaycc`），所有继电器和传感器数据都堆在这一个设备里。
 
-但真实场景里，4 路继电器其实是 4 个不同的东西（门锁、灯、灯、空调），温湿度/人体/烟雾又是 3 类传感器。Day8/9 用一个 **Python Bridge（协议转换桥）** 让一块板子在平台上"分身"成 **6 个虚拟产品、7 个虚拟设备**。
+但真实场景里，4 路继电器其实是 4 个不同的东西（门锁、灯、灯、空调），温湿度/人体/烟雾又是 3 类传感器。Day8 用一个 **Python Bridge（协议转换桥）** 让一块板子在平台上"分身"成 **6 个虚拟产品、7 个虚拟设备**。
 
 ### 13.1 整体架构
 
@@ -1609,7 +1609,7 @@ python set_modbus.py --smoke 30      # 烟雾等级 0~100
 
 写入后模拟器的值被更新，板子下次采集就会读到新基准，然后围绕它继续飘动。
 
-### 13.8 Day8/9 文件清单
+### 13.8 Day8 文件清单
 
 | 文件 | 作用 |
 |------|------|
@@ -1620,7 +1620,7 @@ python set_modbus.py --smoke 30      # 烟雾等级 0~100
 | `simulator/esp32/*.py` | ESP32 网关固件（boot/main/ap_config/modbus_gw/relay_hw/app_config） |
 | `simulator/day8/` | Day8 归档副本（esp32_firmware + tools），与主目录同步 |
 
-### 13.9 Day8/9 验收清单
+### 13.9 Day8 验收清单
 
 | # | 测试项 | 通过标志 |
 |---|--------|---------|
