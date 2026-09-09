@@ -30,7 +30,7 @@ if _PARENT not in sys.path:
 from db import (
     init_db, load_all_mappings, add_mapping, update_mapping, delete_mapping,
     authenticate, list_users, add_user, update_user_role, delete_user, reset_password,
-    start_session, end_session, touch_session, list_online_users,
+    start_session, kick_user_sessions, end_session, touch_session, list_online_users,
     list_recent_sessions, get_online_count,
     get_device_status_all, load_gateway_config,
 )
@@ -128,6 +128,7 @@ def login():
         if user:
             ip = request.remote_addr or ""
             sid = start_session(user["id"], user["username"], ip)
+            kick_user_sessions(user["id"], keep_session_id=sid)  # 踢掉之前的 session, 只保留当前这个
             session["user"] = {
                 "id": user["id"],
                 "username": user["username"],
@@ -301,7 +302,7 @@ def users_add():
         role = request.form.get("role", "user")
         display_name = request.form.get("display_name", "").strip()
         # 校验
-        from db import _RE_USER, _RE_PASS, _RE_ROLE
+        from db import _RE_USER, _RE_PASS
         if not _RE_USER.match(username):
             flash(f"用户名格式不合法 (仅字母数字下划线, 3-20 位)", "error")
             return redirect(url_for("users_list"))

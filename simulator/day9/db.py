@@ -336,6 +336,26 @@ def reset_password(user_id, new_password):
 # ============================================================
 # 登录会话 (在线/离线追踪)
 # ============================================================
+def kick_user_sessions(user_id, keep_session_id=None):
+    """同一用户新登录时, 把该用户所有旧的 online session 置为 offline.
+
+    可选: keep_session_id 指定保留某条 (刚创建的新 session 不应该被自己踢掉).
+    """
+    with get_conn() as conn:
+        if keep_session_id is not None:
+            conn.execute(
+                "UPDATE login_sessions SET status='offline', logout_at=CURRENT_TIMESTAMP "
+                "WHERE user_id=? AND status='online' AND id!=?",
+                (user_id, keep_session_id),
+            )
+        else:
+            conn.execute(
+                "UPDATE login_sessions SET status='offline', logout_at=CURRENT_TIMESTAMP "
+                "WHERE user_id=? AND status='online'",
+                (user_id,),
+            )
+
+
 def start_session(user_id, username, ip=""):
     """登录时调用. 返回 session_id"""
     with get_conn() as conn:
