@@ -89,6 +89,9 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 </style></head><body>
 <h2>🔌 智能网关配网 (Day9)</h2>
 <div class="sub">单网关 → Python Bridge → 多虚拟产品 (门锁/灯/空调/温湿度/人体/烟雾)</div>
+<div style="background:#78350f;color:#fde68a;padding:10px 12px;border-radius:8px;margin-bottom:14px;font-size:13px;line-height:1.6">
+📱 手机连上热点后, 若提示"网络无法访问互联网/当前网络不稳定",<b>请选择"保持连接/仍要连接"</b>, 本页面无需互联网即可使用。
+</div>
 """ + saved_banner + """
 <form method="POST" action="/save" onsubmit="serializeForm()">
 
@@ -263,12 +266,18 @@ def run(cfg=None):
         cfg = app_config.load() or app_config.defaults()
     start_ap(cfg)
 
-    # 启动 Modbus 采集 (用于实时值显示)
+    # 启动 Modbus 采集 (仅用于实时值显示; 短超时, 按需读取, 不后台轮询)
     gw = None
     try:
         import modbus_gw
         gw = modbus_gw.init(cfg.get("modbus_slaves", []))
-        print("[ap] Modbus 采集已启动, 共 %d 个采集点" % gw.point_count())
+        # 配网模式用短超时, 避免读取卡住时阻塞网页服务
+        for _c in gw.conns.values():
+            _c.timeout = 0.6
+        # 所有点立即到期 (首次刷新就能读到)
+        for _pt in gw.points:
+            _pt["next_due"] = 0
+        print("[ap] Modbus 就绪, 共 %d 个采集点" % gw.point_count())
     except Exception as e:
         print("[ap] Modbus 启动失败:", e)
 
@@ -279,18 +288,10 @@ def run(cfg=None):
     srv.settimeout(1)
 
     saved = False
-    last_poll = time.ticks_ms()
     while True:
         if saved:
             time.sleep(2)
             machine.reset()
-        # 非阻塞采集 Modbus
-        if gw and time.ticks_diff(time.ticks_ms(), last_poll) >= 500:
-            try:
-                gw.poll_one()
-            except Exception:
-                pass
-            last_poll = time.ticks_ms()
         try:
             cl, _addr = srv.accept()
         except OSError:
@@ -358,8 +359,22 @@ def run(cfg=None):
                         "Connection: close\r\n\r\n" + html)
                 saved = True
             elif "GET /api/realtime" in line:
-                # 返回 Modbus 实时采集值
-                vals = gw.collected() if gw else {}
+                # 按需读取一轮 Modbus (失败的点短超时跳过, 不卡住网页)
+                if gw:
+                    n = gw.point_count()
+                    for _ in range(n + 2):
+                        try:
+                            gw.poll_one()
+                        except Exception:
+                            break
+                        if len(gw.values) >= n:
+                            break
+                    vals = gw.collected()
+                    # 读完后让所有点重新到期, 下次刷新再读一轮
+                    for _pt in gw.points:
+                        _pt["next_due"] = 0
+                else:
+                    vals = {}
                 resp = json.dumps(vals)
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
                         "Connection: close\r\n\r\n" + resp)
