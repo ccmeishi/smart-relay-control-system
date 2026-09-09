@@ -8,10 +8,10 @@
 网关上报 payload 包含所有 key:
   relay1..relay4 (GPIO 真源)
   temperature, humidity (Modbus 采集)
-  human, smoke, current, voltage (Modbus 模拟多寄存器)
+  human, smoke (Modbus 模拟多寄存器)
 
 ESP32 只连 1 个网关产品, 建议创建专门的 esp32-gateway 产品,
-把所有属性都定义在它的物模型里 (relay1~4, temperature, humidity, human, smoke, current, voltage)。
+把所有属性都定义在它的物模型里 (relay1~4, temperature, humidity, human, smoke)。
 """
 import time
 import json

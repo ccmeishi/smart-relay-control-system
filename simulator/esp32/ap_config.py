@@ -90,7 +90,7 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 <h2>🔌 智能网关配网 (Day9)</h2>
 <div class="sub">单网关 → Python Bridge → 多虚拟产品 (门锁/灯/空调/温湿度/人体/烟雾)</div>
 """ + saved_banner + """
-<form method="POST" action="/save">
+<form method="POST" action="/save" onsubmit="serializeForm()">
 
 <div class="card">
 <h3>📶 WiFi (设备要连的路由器/手机热点)</h3>
@@ -121,19 +121,16 @@ button{width:100%;padding:14px;border:0;border-radius:10px;background:#22c55e;co
 <div class="hint">
 ESP32 作为单网关上报所有数据到此产品的 properties/report,
 Python Bridge 订阅此 topic 后按 routing table 拆分到多虚拟产品。<br>
-网关产品物模型需包含所有属性: relay1~4, temperature, humidity, human, smoke, current, voltage
+网关产品物模型需包含所有属性: relay1~4, temperature, humidity, human, smoke
 </div>
 </div>
 
 <div class="card">
-<h3>📝 Modbus TCP 采集点 (JSON)</h3>
-<textarea name="modbus_slaves" placeholder='[{"host":"192.168.30.100","port":502,"unit_id":1,"points":[{"addr":"0x0000","key":"temperature","period_ms":3000,"count":1,"type":"uint16","scale":0.1}]}]'>""" + mb_json + """</textarea>
-<div class="hint">
-<b>type:</b> uint16 / int16 (1寄存器), uint32 / int32 (2寄存器), float_be (2寄存器大端浮点)<br>
-<b>scale:</b> 寄存器值 × scale = 上报值, 如 scale=0.1 表示 266 → 26.6<br>
-<b>key 命名规则:</b> Bridge 的 UP_ROUTING 用 key 路由, 常用 key: temperature humidity human smoke current voltage<br>
-<b>硬件:</b> 每路寄存器是 Modbus 从站模拟器上的一个"点", 可以多开几个寄存器模拟多传感器
-</div>
+<h3>Modbus TCP 采集配置</h3>
+<p>支持多个从站，每个从站可配置多个采集点（寄存器地址、JSON键名、采集周期等）</p>
+<div id="slaves"></div>
+<button type="button" class="btn" onclick="addSlave()" style="background:#3b82f6">+ 添加从站</button>
+<textarea id="mb_json" name="modbus_slaves" style="display:none"></textarea>
 </div>
 
 <button type="submit">💾 保存并重启</button>
@@ -142,13 +139,106 @@ Python Bridge 订阅此 topic 后按 routing table 拆分到多虚拟产品。<b
 保存后设备自动重启。重启完请启动 Python Bridge:<br>
   python simulator/tools/gateway_bridge.py
 </div>
+<script>
+var SLAVES = """ + mb_json + """;
+if(!Array.isArray(SLAVES)) SLAVES = [];
+
+function render(){
+  var c = document.getElementById("slaves");
+  var h = "";
+  for(var i=0;i<SLAVES.length;i++){
+    var s = SLAVES[i];
+    h += '<div class="card" style="background:#1e293b;border:1px solid #334155;margin-bottom:14px">';
+    h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    h += '<b style="color:#60a5fa">从站 '+(i+1)+'</b>';
+    h += '<button type="button" onclick="removeSlave('+i+')" style="width:auto;padding:6px 12px;background:#ef4444;color:#fff;border:0;border-radius:6px;font-size:13px">删除从站</button>';
+    h += '</div>';
+    h += '<div><label>主机</label><input value="'+(s.host||'')+'" oninput="SLAVES['+i+'].host=this.value"></div>';
+    h += '<div class="row"><div><label>端口</label><input type="number" value="'+(s.port||502)+'" oninput="SLAVES['+i+'].port=+this.value"></div>';
+    h += '<div><label>从站地址</label><input type="number" value="'+(s.unit_id||1)+'" oninput="SLAVES['+i+'].unit_id=+this.value"></div></div>';
+    h += '<div style="margin:14px 0 8px;color:#60a5fa;font-weight:bold">采集点</div>';
+    var pts = s.points||[];
+    for(var j=0;j<pts.length;j++){
+      var p = pts[j];
+      h += '<div style="border:1px solid #334155;background:#0f172a;padding:12px;margin:8px 0;border-radius:8px">';
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span style="color:#94a3b8;font-weight:bold">点 '+(j+1)+'</span>';
+      h += '<button type="button" onclick="removePoint('+i+','+j+')" style="width:auto;padding:4px 10px;background:#ef4444;color:#fff;border:0;border-radius:6px;font-size:12px">删除</button></div>';
+      h += '<div class="row"><div><label>寄存器地址</label><input value="'+(p.addr||'')+'" oninput="SLAVES['+i+'].points['+j+'].addr=this.value"></div>';
+      h += '<div><label>JSON键名</label><input value="'+(p.key||'')+'" oninput="SLAVES['+i+'].points['+j+'].key=this.value"></div></div>';
+      h += '<div class="row"><div><label>数据类型</label><select onchange="SLAVES['+i+'].points['+j+'].type=this.value">';
+      ['uint16','int16','uint32','int32','float_be'].forEach(function(t){
+        h += '<option value="'+t+'"'+(p.type===t?' selected':'')+'>'+t+'</option>';
+      });
+      h += '</select></div>';
+      h += '<div><label>采集周期(ms)</label><input type="number" value="'+(p.period_ms||3000)+'" oninput="SLAVES['+i+'].points['+j+'].period_ms=+this.value"></div></div>';
+      h += '<div class="row"><div><label>缩放系数</label><input type="number" step="0.001" value="'+(p.scale||1)+'" oninput="SLAVES['+i+'].points['+j+'].scale=+this.value"></div>';
+      h += '<div><label>寄存器数量</label><input type="number" value="'+(p.count||1)+'" oninput="SLAVES['+i+'].points['+j+'].count=+this.value"></div></div>';
+      h += '<div style="margin-top:8px;padding:8px;background:#1e293b;border-radius:6px;display:flex;justify-content:space-between;align-items:center">';
+      h += '<span style="color:#94a3b8;font-size:13px">实时值</span>';
+      h += '<span id="live_'+i+'_'+j+'" data-key="'+(p.key||'')+'" style="color:#22c55e;font-weight:bold;font-size:16px">--</span>';
+      h += '</div>';
+      h += '</div>';
+    }
+    h += '<button type="button" onclick="addPoint('+i+')" style="background:#3b82f6">+ 添加采集点</button>';
+    h += '</div>';
+  }
+  c.innerHTML = h;
+}
+
+function addSlave(){
+  SLAVES.push({host:"192.168.30.100",port:502,unit_id:1,points:[]});
+  render();
+}
+function removeSlave(i){
+  SLAVES.splice(i,1); render();
+}
+function addPoint(i){
+  SLAVES[i].points.push({addr:"0x0000",key:"temperature",type:"uint16",period_ms:3000,scale:0.1,count:1});
+  render();
+}
+function removePoint(i,j){
+  SLAVES[i].points.splice(j,1); render();
+}
+function serializeForm(){
+  document.getElementById("mb_json").value = JSON.stringify(SLAVES);
+}
+function refreshRealtime(){
+  fetch("/api/realtime").then(function(r){return r.json();}).then(function(data){
+    for(var i=0;i<SLAVES.length;i++){
+      var pts=SLAVES[i].points||[];
+      for(var j=0;j<pts.length;j++){
+        var el=document.getElementById("live_"+i+"_"+j);
+        if(el){
+          var k=pts[j].key||"";
+          if(data.hasOwnProperty(k)){
+            el.textContent=data[k];
+            el.style.color="#22c55e";
+          }else{
+            el.textContent="--";
+            el.style.color="#64748b";
+          }
+        }
+      }
+    }
+  }).catch(function(){});
+}
+render();
+setInterval(refreshRealtime,2000);
+</script>
 </body></html>"""
 
 
-def start_ap():
-    """开放设备热点, 返回热点名"""
+def start_ap(cfg=None):
+    """开放设备热点, 同时尝试连 WiFi (用于读取 Modbus 实时值)"""
     sta = network.WLAN(network.STA_IF)
-    sta.active(False)
+    sta.active(True)
+    # 如果有保存的 WiFi 配置, 尝试连接 (配网时也能读 Modbus)
+    if cfg and cfg.get("wifi_ssid"):
+        try:
+            sta.connect(cfg["wifi_ssid"], cfg.get("wifi_pass", ""))
+            print("[ap] 尝试连接 WiFi:", cfg["wifi_ssid"])
+        except Exception as e:
+            print("[ap] WiFi 连接失败:", e)
     ap = network.WLAN(network.AP_IF)
     ap.active(False)
     time.sleep_ms(200)
@@ -171,7 +261,16 @@ def run(cfg=None):
     """阻塞运行配网网页服务; 保存成功后自动重启。"""
     if cfg is None:
         cfg = app_config.load() or app_config.defaults()
-    start_ap()
+    start_ap(cfg)
+
+    # 启动 Modbus 采集 (用于实时值显示)
+    gw = None
+    try:
+        import modbus_gw
+        gw = modbus_gw.init(cfg.get("modbus_slaves", []))
+        print("[ap] Modbus 采集已启动, 共 %d 个采集点" % gw.point_count())
+    except Exception as e:
+        print("[ap] Modbus 启动失败:", e)
 
     srv = socket.socket()
     srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -180,10 +279,18 @@ def run(cfg=None):
     srv.settimeout(1)
 
     saved = False
+    last_poll = time.ticks_ms()
     while True:
         if saved:
             time.sleep(2)
             machine.reset()
+        # 非阻塞采集 Modbus
+        if gw and time.ticks_diff(time.ticks_ms(), last_poll) >= 500:
+            try:
+                gw.poll_one()
+            except Exception:
+                pass
+            last_poll = time.ticks_ms()
         try:
             cl, _addr = srv.accept()
         except OSError:
@@ -250,6 +357,12 @@ def run(cfg=None):
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
                         "Connection: close\r\n\r\n" + html)
                 saved = True
+            elif "GET /api/realtime" in line:
+                # 返回 Modbus 实时采集值
+                vals = gw.collected() if gw else {}
+                resp = json.dumps(vals)
+                cl.send("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+                        "Connection: close\r\n\r\n" + resp)
             else:
                 html = _html_form(cfg)
                 cl.send("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"

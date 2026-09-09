@@ -2,8 +2,20 @@
 exec 共享全局命名空间, main.py 可直接使用 _cli / _TOPICS
 """
 import time, json, network, os, sys
+from machine import Pin
 
 print("BOOT v12 start")
+
+# ---------- 0. 复位时按住任意按键 -> 强制进入配网模式 ----------
+BTN_GPIOS = [10, 9, 6, 8]
+_btn_pins = [Pin(g, Pin.IN, Pin.PULL_UP) for g in BTN_GPIOS]
+time.sleep_ms(50)  # 等电平稳定
+_force_config = any(p.value() == 0 for p in _btn_pins)
+if _force_config:
+    print("  检测到按键按下, 强制进入配网模式...")
+    import ap_config
+    ap_config.run(None)
+    sys.exit()
 
 # ---------- 1. config.json ----------
 try:
@@ -21,8 +33,6 @@ except OSError:
             "points": [
                 {"addr": "0x0000", "key": "temperature", "period_ms": 3000, "count": 1, "type": "uint16", "scale": 0.1},
                 {"addr": "0x0001", "key": "humidity",    "period_ms": 5000, "count": 1, "type": "uint16", "scale": 0.1},
-                {"addr": "0x0002", "key": "current",     "period_ms": 10000, "count": 1, "type": "uint16", "scale": 0.1},
-                {"addr": "0x0003", "key": "voltage",     "period_ms": 10000, "count": 1, "type": "uint16", "scale": 0.1},
                 {"addr": "0x0004", "key": "human",       "period_ms": 3000, "count": 1, "type": "uint16", "scale": 1},
                 {"addr": "0x0005", "key": "smoke",       "period_ms": 3000, "count": 1, "type": "uint16", "scale": 1},
             ]

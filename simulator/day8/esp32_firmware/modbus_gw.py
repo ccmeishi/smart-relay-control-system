@@ -30,6 +30,7 @@ JetLinks 下发属性只对 relay 设备生效 (GPIO 操作), sensor 设备只�
 import time
 import struct
 import socket
+import random
 
 
 # ---------- Modbus TCP 帧编解码 ----------
@@ -287,6 +288,8 @@ class ModbusGateway:
             if val is not None:
                 if best.get("scale") is not None:
                     val = round(val * best["scale"], 2)
+                # 模拟飘动 (演示用, 让数据有变化不固定)
+                val = _apply_drift(best["key"], val)
                 self.values[best["key"]] = val
                 conn.fail_count = 0
                 print("[modbus] %s = %s (addr=%s, type=%s)" % (
@@ -303,6 +306,25 @@ class ModbusGateway:
     def close_all(self):
         for c in self.conns.values():
             c.close()
+
+
+# ---------- 模拟飘动 (演示用) ----------
+
+def _apply_drift(key, val):
+    """根据传感器类型施加不同的随机飘动, 让数据不固定"""
+    if not isinstance(val, (int, float)):
+        return val
+    k = str(key).lower()
+    if "human" in k or "presence" in k:
+        # 人体感应: 5% 概率翻转 (0/1)
+        if random.random() < 0.05:
+            return 0 if val else 1
+        return val
+    if "smoke" in k or "gas" in k:
+        # 烟雾: ±3 波动, 限制 0~100
+        return max(0, min(100, int(val) + random.randint(-3, 3)))
+    # 温湿度/电流/电压等: ±2% 扰动
+    return round(val * (1 + random.uniform(-0.02, 0.02)), 2)
 
 
 # ---------- 模块级便捷函数 ----------

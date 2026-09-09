@@ -1,15 +1,20 @@
 """Modbus TCP 从站模拟器(联调测试用)
 
-作用: 在没有实验室从站的环境里, 本机模拟一台 8 通道继电器从站.
-  - 支持 8 路继电器 (reg2~reg9)
+作用: 模拟一台 4 路继电器 + 多传感器从站.
+  - 温湿度自动漂移
+  - 人体感应每 10 秒随机切换
+  - 烟雾等级 0~100 波动, 偶尔飙升模拟报警
   - 电流自动联动 (每开一路 +0.5A)
   - 电压微小波动 (218V~222V)
-  - slave ID 可通过命令行参数指定 (默认 9)
+  - unit_id 可通过命令行参数指定 (默认 7)
 
 寄存器布局 (unit_id 可配置):
-  reg0  = 温度 x10 (起始 253 => 25.3 C)
-  reg1  = 湿度 x10 (起始 567 => 56.7 %RH)
-  reg2~reg9 = 继电器1~8 (0=关/1=开)
+  reg0  = 温度 x10 (起始 253 => 25.3 C, 自动漂移)
+  reg1  = 湿度 x10 (起始 567 => 56.7 %RH, 自动漂移)
+  reg2~reg3 = 预留
+  reg4  = 人体感应 (0=无人/1=有人, 每10秒随机切换)
+  reg5  = 烟雾等级 (0~100, 自动波动)
+  reg6~reg9 = 继电器1~4 (0=关/1=开)
   reg10 = 总电流 x10(A)  (每开一路 +0.5A)
   reg11 = 电源电压 x10(V) (218~222V 波动)
   reg12~reg15 = 预留
@@ -17,9 +22,9 @@
 支持功能码: 0x03 读保持寄存器 / 0x06 写单个寄存器
 
 用法:
-  python modbus_slave_sim.py                  # 默认 unit_id=9, 端口 5502
+  python modbus_slave_sim.py                  # 默认 unit_id=7, 端口 5502
   python modbus_slave_sim.py 5503             # 指定端口
-  python modbus_slave_sim.py 5502 9           # 指定端口和 unit_id
+  python modbus_slave_sim.py 5502 7           # 指定端口和 unit_id
 """
 
 import random
@@ -34,12 +39,12 @@ PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 5502
 UNIT_ID = int(sys.argv[2]) if len(sys.argv) > 2 else 7
 
 # 寄存器布局 (共 16 个保持寄存器)
-REGS = [253, 567, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2200, 0, 0, 0, 0]
+REGS = [253, 567, 0, 0, 1, 10, 0, 0, 0, 0, 0, 2200, 0, 0, 0, 0]
 LOCK = threading.Lock()
-RELAY_REGS = [2, 3, 4, 5, 6, 7, 8, 9]   # 8 路继电器对应寄存器偏移
+RELAY_REGS = [6, 7, 8, 9]   # 4 路继电器对应寄存器偏移
 CURRENT_REG = 10
 VOLTAGE_REG = 11
-RELAY_COUNT = 8
+RELAY_COUNT = 4
 
 
 def relay_state(regs, offset):
@@ -128,13 +133,24 @@ class Server(socketserver.ThreadingTCPServer):
 
 
 def drift():
-    """环境模拟: 温湿度缓慢漂移, 电压微小波动"""
+    """环境模拟: 温湿度缓慢漂移, 电压微小波动, 人体/烟雾定时变化"""
+    global REGS
+    tick = 0
     while True:
         time.sleep(2)
+        tick += 1
         with LOCK:
+            # 温湿度缓慢漂移
             REGS[0] = max(-100, min(600, REGS[0] + random.choice((-2, -1, 0, 1, 2))))
             REGS[1] = max(0, min(1000, REGS[1] + random.choice((-3, -1, 1, 2, 3))))
             REGS[VOLTAGE_REG] = max(2180, min(2220, REGS[VOLTAGE_REG] + random.choice((-2, -1, 0, 0, 1, 2))))
+            # 人体感应: 每 ~10 秒随机切换有人/无人 (0/1)
+            if tick % 5 == 0:
+                REGS[4] = random.choice((0, 1))
+            # 烟雾等级: 0~100 缓慢波动, 偶尔飙升模拟报警
+            if tick % 3 == 0:
+                delta = random.choice((-5, -2, 0, 2, 5, 20))
+                REGS[5] = max(0, min(100, REGS[5] + delta))
 
 
 def main():
@@ -146,9 +162,12 @@ def main():
                 server = srv
                 print(f"Modbus TCP 从站模拟器已启动: 0.0.0.0:{PORT} (unit_id={UNIT_ID})")
                 print(f"寄存器布局:")
-                print(f"  reg0  温度  (x10, 起始 {REGS[0]/10:.1f}°C)")
-                print(f"  reg1  湿度  (x10, 起始 {REGS[1]/10:.1f}%RH)")
-                print(f"  reg2-9 继电器1-8 (0=关/1=开)  共 {RELAY_COUNT} 路")
+                print(f"  reg0  温度    (x10, 起始 {REGS[0]/10:.1f}°C, 自动漂移)")
+                print(f"  reg1  湿度    (x10, 起始 {REGS[1]/10:.1f}%RH, 自动漂移)")
+                print(f"  reg2-3 预留")
+                print(f"  reg4  人体感应 (0=无人/1=有人, 每10秒随机切换)")
+                print(f"  reg5  烟雾等级 (0~100, 自动波动, 偶尔飙升)")
+                print(f"  reg6-9 继电器1-4 (0=关/1=开)")
                 print(f"  reg10 总电流 (x10, {REGS[CURRENT_REG]/10:.1f}A, 每开一路 +0.5A)")
                 print(f"  reg11 电压  (x10, {REGS[VOLTAGE_REG]/10:.1f}V, 218~222V波动)")
                 print(f"  reg12-15 预留")
