@@ -30,15 +30,16 @@ if !errorlevel! neq 0 (echo [ERROR] flash failed & pause & exit /b 1)
 echo.
 echo === [3/4] Upload source ===
 echo   boot.py, main.py, relay_hw.py, app_config.py, ap_config.py, modbus_gw.py
-echo   umqtt/simple.py
-python -m mpremote connect COM!PORT! cp "!SRC!\boot.py" :/boot.py
-python -m mpremote connect COM!PORT! cp "!SRC!\relay_hw.py" :/relay_hw.py
-python -m mpremote connect COM!PORT! cp "!SRC!\app_config.py" :/app_config.py
-python -m mpremote connect COM!PORT! cp "!SRC!\ap_config.py" :/ap_config.py
-python -m mpremote connect COM!PORT! cp "!SRC!\modbus_gw.py" :/modbus_gw.py
-python -m mpremote connect COM!PORT! cp "!SRC!\main.py" :/main.py
-python -m mpremote connect COM!PORT! mkdir umqtt 2>nul
-python -m mpremote connect COM!PORT! cp "!SRC!\umqtt\simple.py" :umqtt\simple.py
+echo   umqtt/__init__.py, umqtt/simple.py
+python -m mpremote connect COM!PORT! cp "!SRC!\boot.py" :boot.py
+python -m mpremote connect COM!PORT! cp "!SRC!\relay_hw.py" :relay_hw.py
+python -m mpremote connect COM!PORT! cp "!SRC!\app_config.py" :app_config.py
+python -m mpremote connect COM!PORT! cp "!SRC!\ap_config.py" :ap_config.py
+python -m mpremote connect COM!PORT! cp "!SRC!\modbus_gw.py" :modbus_gw.py
+python -m mpremote connect COM!PORT! cp "!SRC!\main.py" :main.py
+python -m mpremote connect COM!PORT! mkdir /umqtt 2>nul
+python -m mpremote connect COM!PORT! cp "!SRC!\umqtt\__init__.py" :/umqtt/__init__.py
+python -m mpremote connect COM!PORT! cp "!SRC!\umqtt\simple.py" :/umqtt/simple.py
 
 echo.
 echo === [4/4] Reset ===

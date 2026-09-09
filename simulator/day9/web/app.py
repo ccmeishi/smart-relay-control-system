@@ -536,7 +536,7 @@ def sessions_list():
 
 
 # ============================================================
-# 采集点配置 (只读展示)
+# 采集点配置 (admin 可编辑)
 # ============================================================
 @app.route("/config-points")
 @login_required
@@ -549,7 +549,117 @@ def config_points():
                 config_data = json.load(f)
         except Exception as e:
             flash(f"读取 config.json 失败: {e}", "error")
-    return render_template("config_points.html", config=config_data)
+    return render_template("config_points.html", config=config_data, config_path=config_path)
+
+
+@app.route("/config-points/save", methods=["POST"])
+@admin_required
+def config_points_save():
+    """保存采集点配置到 config.json (admin 专属)"""
+    config_path = os.path.join(_PARENT, "esp32_firmware", "config.json")
+
+    if not os.path.exists(config_path):
+        flash("config.json 文件不存在, 无法保存", "error")
+        return redirect(url_for("config_points"))
+
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except Exception as e:
+        flash(f"读取 config.json 失败: {e}", "error")
+        return redirect(url_for("config_points"))
+
+    try:
+        # WiFi 基础配置
+        config["wifi_ssid"] = request.form.get("wifi_ssid", config.get("wifi_ssid", ""))
+        config["wifi_pass"] = request.form.get("wifi_pass", config.get("wifi_pass", ""))
+        config["mqtt_host"] = request.form.get("mqtt_host", config.get("mqtt_host", ""))
+        mqtt_port_str = request.form.get("mqtt_port", str(config.get("mqtt_port", 1883)))
+        try:
+            config["mqtt_port"] = int(mqtt_port_str)
+        except ValueError:
+            config["mqtt_port"] = config.get("mqtt_port", 1883)
+        config["device_id"] = request.form.get("device_id", config.get("device_id", ""))
+        config["product_id"] = request.form.get("product_id", config.get("product_id", ""))
+
+        # Modbus 采集点
+        # 表单字段: slave_{i}_addr_{j}, slave_{i}_key_{j}, ...
+        modbus_slaves = config.get("modbus_slaves", [])
+        # 收集已提交的采集点: 以 slave_N_addr_M 为标识
+        submitted = {}
+        for key, value in request.form.items():
+            if not key.startswith("slave_"):
+                continue
+            parts = key.split("_")  # e.g. slave_0_addr_0
+            # slave_{i}_{field}_{j}
+            if len(parts) >= 4:
+                try:
+                    s_idx = int(parts[1])
+                    field = parts[2]
+                    p_idx = int(parts[3])
+                except ValueError:
+                    continue
+                submitted.setdefault(s_idx, {}).setdefault(p_idx, {})[field] = value
+
+        # 按 slave 重建 points
+        for s_idx, points_dict in submitted.items():
+            if s_idx >= len(modbus_slaves):
+                continue
+            new_points = []
+            for p_idx, fields in sorted(points_dict.items()):
+                point = {}
+                # addr: 允许 "0x0000" 或 "0" 等格式, 存储为整数
+                addr_str = fields.get("addr", "0")
+                try:
+                    addr_str = addr_str.strip()
+                    if addr_str.lower().startswith("0x"):
+                        point["addr"] = int(addr_str, 16)
+                    else:
+                        point["addr"] = int(addr_str)
+                except ValueError:
+                    point["addr"] = int(addr_str, 16) if addr_str.lower().startswith("0x") else 0
+
+                point["key"] = fields.get("key", "").strip()
+                try:
+                    point["period_ms"] = max(500, int(fields.get("period_ms", 3000)))
+                except ValueError:
+                    point["period_ms"] = 3000
+                point["type"] = fields.get("type", "uint16").strip()
+                try:
+                    point["scale"] = float(fields.get("scale", 1))
+                except ValueError:
+                    point["scale"] = 1.0
+                try:
+                    point["count"] = max(1, int(fields.get("count", 1)))
+                except ValueError:
+                    point["count"] = 1
+                point["write"] = fields.get("write") == "on"
+
+                if point["key"]:  # 只保存有 key 的点
+                    new_points.append(point)
+            modbus_slaves[s_idx]["points"] = new_points
+
+        config["modbus_slaves"] = modbus_slaves
+
+        # 备份旧文件
+        backup_path = config_path + ".bak"
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                old = f.read()
+            with open(backup_path, "w", encoding="utf-8") as f:
+                f.write(old)
+        except Exception:
+            pass  # 备份失败不阻止保存
+
+        # 写入新配置
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        flash("采集点配置已保存! ESP32 设备需要重启后生效", "success")
+    except Exception as e:
+        flash(f"保存失败: {e}", "error")
+
+    return redirect(url_for("config_points"))
 
 
 # ============================================================

@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}登录 - Day9 IoT 管理平台{% endblock %}
+{% block login_content %}
+<div class="login-card">
+  <div class="login-logo">
+    <div class="login-logo-icon">
+      {{ svg('layers') }}
+    </div>
+    <div class="login-title">物联网平台管理平台</div>
+    <div class="login-subtitle">设备映射 · 权限管理 · 可视化配置</div>
+  </div>
+
+  <form method="post">
+    <div class="form-group">
+      <label class="form-label">用户名</label>
+      <input type="text" name="username" class="form-control" required autofocus
+             placeholder="admin 或 user">
+    </div>
+    <div class="form-group">
+      <label class="form-label">密码</label>
+      <input type="password" name="password" class="form-control" required
+             placeholder="admin123 / user123">
+    </div>
+    <button type="submit" class="btn btn-primary" style="width:100%;padding:11px;">
+      {{ svg('shield') }} 安全登录
+    </button>
+  </form>
+
+  <div class="login-hint">
+    <div style="display:flex;gap:24px;">
+      <div>
+        <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">管理员</div>
+        <div><code>admin / admin123</code></div>
+      </div>
+      <div>
+        <div style="font-weight:600;color:var(--text-secondary);margin-bottom:4px;">普通用户</div>
+        <div><code>user / user123</code></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
