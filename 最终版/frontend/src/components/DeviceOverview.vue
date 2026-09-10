@@ -58,8 +58,8 @@ const store = useDashboardStore()
 .stat-card.offline .stat-num { color: var(--red); text-shadow: 0 0 10px rgba(245,108,108,0.5); }
 .stat-name { font-size: 14px; color: #b8c4d4; margin-top: 6px; letter-spacing: 1px; }
 
-/* rate-bar-wrap 吃掉剩余空间, 紧贴 stat-row */
-.rate-bar-wrap { flex-shrink: 0; padding-top: 4px; }
+/* rate-bar-wrap 吃掉剩余空间, 紧贴 stat-row, 底部留点呼吸空间 */
+.rate-bar-wrap { flex-shrink: 0; padding-top: 4px; padding-bottom: 4px; }
 .rate-bar-label {
   display: flex; justify-content: space-between;
   font-size: 14px; color: #b8c4d4; margin-bottom: 8px;
