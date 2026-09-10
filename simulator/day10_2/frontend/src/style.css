@@ -1,0 +1,192 @@
+/* Day10.2 大屏全局深色科技风样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: #050816;
+  color: #e0e6ed;
+  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+}
+
+:root {
+  --bg-deep: #050816;
+  --bg-panel: rgba(16, 28, 56, 0.6);
+  --border-glow: rgba(64, 158, 255, 0.3);
+  --blue: #409eff;
+  --green: #67c23a;
+  --orange: #e6a23c;
+  --red: #f56c6c;
+  --text-dim: #8a97a8;
+}
+
+/* 大屏根布局: 3 列 (360px / 自适应 / 360px), 3 行 (头部 / 2 内容行) */
+.dashboard {
+  display: grid;
+  grid-template-columns: 360px 1fr 360px;
+  grid-template-rows: 76px 1fr 1fr;
+  gap: 14px;
+  padding: 14px;
+  height: 100vh;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(64, 158, 255, 0.08), transparent 40%),
+    radial-gradient(circle at 80% 90%, rgba(103, 194, 58, 0.06), transparent 40%),
+    linear-gradient(135deg, #0a0e27 0%, #050816 100%);
+}
+
+/* 头部横跨 3 列 */
+.dash-header {
+  grid-column: 1 / 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+}
+
+.dash-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  background: linear-gradient(90deg, #6db3ff, #409eff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 20px rgba(64, 158, 255, 0.3);
+}
+
+.dash-header-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  font-size: 15px;
+}
+
+.dash-clock {
+  font-family: 'Orbitron', 'Consolas', monospace;
+  font-size: 20px;
+  color: #6db3ff;
+  letter-spacing: 2px;
+}
+
+.ws-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.ws-dot::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--red);
+  box-shadow: 0 0 8px var(--red);
+}
+.ws-dot.online::before {
+  background: var(--green);
+  box-shadow: 0 0 8px var(--green);
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* 卡片通用 */
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-glow);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+.panel::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--blue), transparent);
+  opacity: 0.6;
+}
+
+.panel-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: #cfe3ff;
+  flex-shrink: 0;
+}
+.panel-title::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--blue);
+  box-shadow: 0 0 8px var(--blue);
+}
+
+.panel-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 数字发光 */
+.big-num {
+  font-family: 'Orbitron', 'Consolas', monospace;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(64, 158, 255, 0.6);
+}
+
+/* 滚动条 */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-thumb { background: rgba(64, 158, 255, 0.4); border-radius: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* 新告警淡入 */
+@keyframes slideFade {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in { animation: slideFade 0.5s ease; }
+
+/* critical 闪烁 */
+@keyframes critBlink {
+  0%, 100% { border-color: rgba(245, 108, 108, 0.9); box-shadow: 0 0 12px rgba(245, 108, 108, 0.5); }
+  50% { border-color: rgba(245, 108, 108, 0.3); box-shadow: none; }
+}
+.critical-flash { animation: critBlink 1s ease 3; }
+
+/* 规则卡片刚触发高亮 */
+@keyframes ruleFlash {
+  0% { background: rgba(64, 158, 255, 0.35); }
+  100% { background: var(--bg-panel); }
+}
+.rule-flash { animation: ruleFlash 1s ease; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}

@@ -1,0 +1,16 @@
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+
+# 运行日志
+logs/
+*.log
+
+# SQLite 运行库 (首次运行自动建)
+iot_platform.db
+iot_platform.db-wal
+iot_platform.db-shm
+
+# 备份
+*.bak
