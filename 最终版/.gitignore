@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyc
+.venv/
+venv/
+
+# 运行时数据库与日志 (不提交, 首次运行自动生成)
+iot_platform.db
+iot_platform.db-wal
+iot_platform.db-shm
+*.db
+backend/logs/
+logs/
+
+# 前端构建产物 (Phase 3 后由 npm run build 重新生成, 但 dist 需提交供免 Node 部署)
+# 注: frontend/dist/ 提交, 见 backend/static 托管; 仅忽略 node_modules
+frontend/node_modules/
+frontend/.vite/
+
+# 测试 / e2e 截图
+tests/e2e/screenshots/*.png
+
+# IDE
+.vscode/
+.idea/
