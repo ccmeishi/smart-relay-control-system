@@ -80,7 +80,7 @@ ws://localhost:8083/ws/dashboard → Vue3 大屏 (6 模块)
 ```
 最终版/
 ├── README.md                ← 本文件
-├── docs/                    ← 详细文档（7 篇）
+├── docs/                    ← 详细文档（8 篇，含人工测试指南）
 ├── start_all.bat            ← 一键启动（菜单：模拟器/实物/开发/测试/清理）
 ├── stop_all.bat             ← 一键停止
 ├── requirements-dev.txt     ← 测试依赖
@@ -215,6 +215,7 @@ python -m pytest tests/ -v
 | [04-api.md](docs/04-api.md) | API 文档 |
 | [05-deploy.md](docs/05-deploy.md) | 部署指南 |
 | [06-faq.md](docs/06-faq.md) | 常见问题 |
+| [MANUAL_TESTING_GUIDE.md](docs/MANUAL_TESTING_GUIDE.md) | 人工测试指南（含 6 种启动模式逐一测试步骤、22 项验收清单） |
 
 ---
 
