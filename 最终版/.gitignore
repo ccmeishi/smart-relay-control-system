@@ -24,3 +24,6 @@ tests/e2e/screenshots/*.png
 # IDE
 .vscode/
 .idea/
+
+# 临时测试报告
+TEST_REPORT_*.md
