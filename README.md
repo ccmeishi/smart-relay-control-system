@@ -1,4 +1,4 @@
-# 智能继电器控制系统
+﻿# 智能继电器控制系统
 
 > Day1 ~ Day8 完整记录 | ESP32-C3 + MicroPython + Modbus + MQTT + Python Bridge + JetLinks
 
@@ -78,7 +78,7 @@ pip install pymodbus paho-mqtt flask esptool mpremote pyserial
 # http://172.16.4.211  账号 admin7 / 密码见平台
 ```
 
-![开发环境](开发环境.png)
+![开发环境](.assets/开发环境.png)
 
 ### JetLinks 连接信息速查
 
@@ -109,7 +109,7 @@ pip install pymodbus paho-mqtt flask esptool mpremote pyserial
 ### 目标
 在电脑上跑一个 Modbus TCP 从站模拟器，模拟一个有温湿度寄存器的传感器，验证 Modbus 协议基本通信。
 
-![Day1 运行截图](day1.png)
+![Day1 运行截图](.assets/day1.png)
 
 ### 运行指令
 
@@ -225,7 +225,7 @@ python relay_simulator_jl.py
 ### 目标
 用 Flask 做一个 Web 控制台，两种模式：MQTT 链路模式（走平台）和直连 Modbus 模式（直接读寄存器）。
 
-![Day3 Web UI 截图](day3.png)
+![Day3 Web UI 截图](.assets/day3.png)
 
 ### 运行指令
 
@@ -262,7 +262,7 @@ python relay_ui.py
 ### 目标
 完成 JetLinks 平台的配置，让 PC 端模拟器能上报数据、接收指令。
 
-![Day4 JetLinks 平台](day4.jpg)
+![Day4 JetLinks 平台](.assets/day4.jpg)
 
 ### 步骤 1：设备接入网关
 
@@ -330,7 +330,7 @@ python relay_ui.py
 - ✅ MQTT 直连 JetLinks（断线指数退避重连）
 - ✅ 持久化配置（/config.json 原子写）
 
-![Day5 ESP32 实物](day5.jpg)
+![Day5 ESP32 实物](.assets/day5.jpg)
 
 ### 7.1 固件烧录
 
@@ -930,7 +930,7 @@ Day5 之前的 MQTT 直连版本，硬编码配置。
 
 ## 九、Day7：Modbus 采集网关（核心功能详解）
 
-![Day7 Modbus 网关运行](day7.jpg)
+![Day7 Modbus 网关运行](.assets/day7.jpg)
 
 ### 9.1 配置格式
 
@@ -1462,7 +1462,7 @@ python -m mpremote connect COM5 exec "import app_config; print(app_config.load()
 
 ## 十三、Day8：网关 + Bridge（一台板子变六个设备）
 
-![Day8 网关+Bridge 架构](day8.png)
+![Day8 网关+Bridge 架构](.assets/day8.png)
 
 前面 Day1~7，一块 ESP32 板子在 JetLinks 上就是**一个设备**（产品 `relay-cc` / 设备 `relaycc`），所有继电器和传感器数据都堆在这一个设备里。
 
@@ -1641,7 +1641,7 @@ python set_modbus.py --smoke 30      # 烟雾等级 0~100
 
 ## 十四、Day9：SQLite 动态路由 + Web 管理后台 + 权限系统 + 实物控制台
 
-![Day9 Web管理后台](day9.png)
+![Day9 Web管理后台](.assets/day9.png)
 
 > **完整详细版见 [simulator/day9/README.md](simulator/day9/README.md)**（面向新手零基础的完整运行指南、代码文件说明、踩坑记录）
 
@@ -1724,7 +1724,7 @@ Day9 实测修了 9 个 bug，**完整踩坑记录 + 根因分析 + 修复代码
 
 ## 十五、Day10：场景联动 + 告警机制
 
-![Day10 场景联动与告警](day10.png)
+![Day10 场景联动与告警](.assets/day10.png)
 
 > **完整详细版见 [simulator/day10/README.md](simulator/day10/README.md)**（面向新手的运行指南、数据库设计、规则执行流程、验收清单）
 
@@ -1796,7 +1796,7 @@ python set_modbus.py 36 60 1 50
 
 ## 十六、Day10.2：Vue3 实时监控大屏（无硬件也能演）
 
-![Day10.2 实时监控大屏](day10.png)
+![Day10.2 实时监控大屏](.assets/day10.png)
 
 > **完整新手教程（每个文件作用 / 从零运行 / 在线率口径 / 全部踩坑）见 [simulator/day10_2/README.md](simulator/day10_2/README.md)**
 
