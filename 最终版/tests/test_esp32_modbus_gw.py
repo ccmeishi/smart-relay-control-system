@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-ESP32_DIR = Path(__file__).resolve().parent.parent / "esp32"
-DAY2_DIR = Path(__file__).resolve().parent.parent / "day2"
+ESP32_DIR = Path(__file__).resolve().parent.parent / "firmware"
+DAY2_DIR = Path(__file__).resolve().parent.parent.parent / "simulator" / "day2"
 
 
 # ---------- fake MicroPython 模块 ----------

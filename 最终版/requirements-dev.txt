@@ -1,0 +1,9 @@
+# Runtime dependencies (install: pip install -r backend/requirements.txt)
+# See backend/requirements.txt for: flask, flask-sock, paho-mqtt
+
+# Test dependencies (install: pip install -r requirements-dev.txt)
+pymodbus>=3.6.0,<4.0
+paho-mqtt>=2.0
+pytest>=8.0
+pytest-asyncio>=0.23
+amqtt>=0.12         # e2e MQTT broker for test fixtures

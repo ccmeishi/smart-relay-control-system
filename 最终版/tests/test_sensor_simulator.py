@@ -25,7 +25,7 @@ import pytest
 
 
 SENSOR_SIM_PATH = (
-    Path(__file__).resolve().parent.parent / "day1" / "sensor_simulator.py"
+    Path(__file__).resolve().parent.parent / "tools" / "sensor_simulator.py"
 )
 DAY1_DIR = str(SENSOR_SIM_PATH.parent)
 

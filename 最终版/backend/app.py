@@ -44,7 +44,10 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.dirname(_HERE)
 FRONTEND_DIST = os.path.join(_PROJECT_ROOT, "frontend", "dist")
 
-app = Flask(__name__, static_folder=FRONTEND_DIST, static_url_path="/")
+# 不用 Flask 内置 static_folder/static_url_path — 它会拦截 /<path> 并对不存在的文件直接 404,
+# 导致 Vue Router 的 /login /manage/users 等子路由无法 SPA fallback.
+# 统一由下面的 index() + spa() 路由手工托管.
+app = Flask(__name__)
 app.register_blueprint(api_bp, url_prefix="/api")
 sock = Sock(app)
 
