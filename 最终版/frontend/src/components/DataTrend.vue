@@ -78,9 +78,17 @@ onMounted(async () => {
   chart = echarts.init(chartEl.value)
   render()
   window.addEventListener('resize', resize)
+  // ResizeObserver: v-show 切屏时图表容器尺寸从 0 恢复, window.resize 不会触发
+  _ro = new ResizeObserver(() => resize())
+  _ro.observe(chartEl.value)
 })
 function resize() { chart && chart.resize() }
-onUnmounted(() => { window.removeEventListener('resize', resize); chart && chart.dispose() })
+let _ro = null
+onUnmounted(() => {
+  window.removeEventListener('resize', resize)
+  _ro && _ro.disconnect()
+  chart && chart.dispose()
+})
 
 watch(active, render)
 watch(() => store.history, render, { deep: true })

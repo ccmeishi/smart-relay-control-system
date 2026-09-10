@@ -152,7 +152,7 @@ watch(() => store.alarmStats, renderPie, { deep: true })
 
 .alarm-list {
   flex: 1; overflow-y: auto;
-  max-height: 200px;
+  min-height: 0;
   border-top: 1px solid rgba(255,255,255,0.06);
   padding-top: 6px;
 }
