@@ -26,7 +26,7 @@ export const useDashboardStore = defineStore('dashboard', {
           api.overview(),
           api.deviceStatus(),
           api.alarmStats(),
-          api.recentAlarms(10),
+          api.recentAlarms(5),
           api.sceneRules()
         ])
         this.overview = ov
@@ -106,7 +106,10 @@ export const useDashboardStore = defineStore('dashboard', {
           break
         case 'alarm_new':
           this.recentAlarms.unshift(ev.data)
-          if (this.recentAlarms.length > 20) this.recentAlarms.pop()
+          // 硬上限 5 条: 新告警顶进, 最旧的滑出
+          while (this.recentAlarms.length > 5) {
+            this.recentAlarms.pop()
+          }
           this.flashAlarmId = ev.data.id
           this.alarmStats = { ...this.alarmStats }
           // 统计 +1 (简单本地递增, 下次轮询校正)
