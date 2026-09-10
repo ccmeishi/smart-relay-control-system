@@ -1462,7 +1462,7 @@ python -m mpremote connect COM5 exec "import app_config; print(app_config.load()
 
 ## 十三、Day8：网关 + Bridge（一台板子变六个设备）
 
-![Day8 网关+Bridge 架构]
+![Day8 网关+Bridge 架构](day8.png)
 
 前面 Day1~7，一块 ESP32 板子在 JetLinks 上就是**一个设备**（产品 `relay-cc` / 设备 `relaycc`），所有继电器和传感器数据都堆在这一个设备里。
 
@@ -1641,6 +1641,8 @@ python set_modbus.py --smoke 30      # 烟雾等级 0~100
 
 ## 十四、Day9：SQLite 动态路由 + Web 管理后台 + 权限系统 + 实物控制台
 
+![Day9 Web管理后台](day9.png)
+
 > **完整详细版见 [simulator/day9/README.md](simulator/day9/README.md)**（面向新手零基础的完整运行指南、代码文件说明、踩坑记录）
 
 ### 14.1 Day9 解决什么问题
@@ -1722,6 +1724,8 @@ Day9 实测修了 9 个 bug，**完整踩坑记录 + 根因分析 + 修复代码
 
 ## 十五、Day10：场景联动 + 告警机制
 
+![Day10 场景联动与告警](day10.png)
+
 > **完整详细版见 [simulator/day10/README.md](simulator/day10/README.md)**（面向新手的运行指南、数据库设计、规则执行流程、验收清单）
 
 ### 15.1 Day10 解决什么问题
@@ -1791,6 +1795,8 @@ python set_modbus.py 36 60 1 50
 ---
 
 ## 十六、Day10.2：Vue3 实时监控大屏（无硬件也能演）
+
+![Day10.2 实时监控大屏](day10.png)
 
 > **完整新手教程（每个文件作用 / 从零运行 / 在线率口径 / 全部踩坑）见 [simulator/day10_2/README.md](simulator/day10_2/README.md)**
 
