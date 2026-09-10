@@ -72,9 +72,41 @@ def backend():
 
     yield {"base_url": base_url, "port": port, "proc": proc}
 
-    proc.terminate()
+    # ---- Teardown: kill the entire process tree (Flask + bridge subprocess) ----
+    # On Windows, proc.terminate() only kills Flask; bridge_runner.start() spawns
+    # fake_bridge.py as a subprocess that becomes orphan and holds SQLite WAL lock.
+    # Use taskkill /T /F to kill the whole tree by PID.
+    if sys.platform == "win32":
+        subprocess.run(
+            ["taskkill", "/pid", str(proc.pid), "/T", "/F"],
+            capture_output=True, timeout=10,
+        )
+    else:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+
+    # Also sweep any orphan fake_bridge / gateway_bridge processes
+    # that might have survived (e.g. from a prior crashed run)
     try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+        import re
+        result = subprocess.run(
+            ["tasklist", "/fo", "csv", "/nh"],
+            capture_output=True, text=True, timeout=10,
+        )
+        for line in result.stdout.strip().splitlines():
+            if "python.exe" in line and (
+                "fake_bridge" in line or "gateway_bridge" in line
+            ):
+                m = re.search(r',(\d+)$', line)
+                if m:
+                    pid = m.group(1)
+                    subprocess.run(
+                        ["taskkill", "/pid", pid, "/F"],
+                        capture_output=True, timeout=5,
+                    )
+    except Exception:
+        pass
