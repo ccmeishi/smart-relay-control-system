@@ -216,6 +216,11 @@ if errorlevel 2 (
 )
 echo [Clean] Stopping backend first...
 for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":8083 " ^| findstr "LISTENING"') do (
+    echo        Killing process tree PID %%a...
+    taskkill /pid %%a /f /t >nul 2>&1
+)
+REM Also kill orphan bridge processes in case port was already free
+for /f "tokens=2 delims=," %%a in ('wmic process where "name=''python.exe'' and (commandline like ''%%fake_bridge%%'' or commandline like ''%%gateway_bridge%%'')" get processid /format:csv ^| findstr /r "[0-9]"') do (
     taskkill /pid %%a /f >nul 2>&1
 )
 timeout /t 2 /nobreak >nul
