@@ -143,14 +143,18 @@ pip install pymodbus==3.6.9 --index-url https://pypi.org/simple/
 
 ## 20. e2e 测试首轮 SQLite "attempt to write a readonly database"
 
-**根因**：前一轮 e2e 的 teardown 只调用 `proc.terminate()`（Flask PID），`bridge_runner.start()` 启动的 `fake_bridge.py` 子进程变成孤儿，继续持有 SQLite WAL 锁。下一轮 e2e 启动新 Flask 时，WAL 文件被孤儿进程独占。
+**根因**（未完全定论）：前一轮 e2e 的 teardown 只调用 `proc.terminate()`（Flask PID），`bridge_runner.start()` 启动的 `fake_bridge.py` 子进程变成孤儿。推测孤儿进程可能持有 WAL 锁或导致 SQLite 状态异常，下一轮 e2e 启动新 Flask 时数据库报只读。
 
-**修复**（已内置）：`tests/e2e/conftest.py` teardown 两步杀：
+> **为何根因未完全定论**：实测保留 1~2 个孤儿 bridge 进程后再跑 e2e，8 步仍全部通过；`init_db()` 也能正常执行（WAL 模式下新进程可接手写 WAL）。说明"孤儿持锁"不是必然触发条件，可能还涉及陈旧 WAL 残留文件或 OS 级文件锁的偶发竞争。但**无论根因是什么，进程树残留都是必须切断的污染路径**。
+
+**修复**（已内置）：`tests/e2e/conftest.py` teardown 两步杀，从机制上杜绝孤儿残留：
 1. **主杀**：`taskkill /pid <Flask_PID> /T /F` — 杀掉 Flask + 所有子进程（包括 bridge）
 2. **精确兜底**：从 Flask stdout 解析 bridge PID（`bridge_runner.py` 第 53 行 `print("pid=NNN")`），定向 `taskkill /pid <bridge_pid> /F`。比 PowerShell CIM 扫描全进程快 10 倍以上，且只杀自己的 bridge，不会误伤其他 demo
 
 **为何不用 CIM/wmic 扫全进程**：CIM 查所有 Python 的 CommandLine 需 2-3 秒；且全局扫描会在"跑 e2e 时另一个演示 backend 正在跑"的情况下把演示用 bridge 一起杀掉。定向 PID 是更精准无副作用的方案。
 
 **验证**：连续跑两轮 `pytest tests/e2e/ -v`，两轮都应 8/8 通过（第二轮不应该有上一轮遗留的孤儿）。
+
+**如果未来再冒 readonly**：别直接归因孤儿进程，先查——陈旧 WAL 残留（*.db-wal / *.db-shm 没清理）、OS 级文件锁（杀进程后文件句柄未立即释放）、或 SQLite WAL 模式边界条件。
 
 相关文档：[01-快速开始](01-quickstart.md) ｜ [05-部署指南](05-deploy.md) ｜ [02-架构设计](02-architecture.md)
