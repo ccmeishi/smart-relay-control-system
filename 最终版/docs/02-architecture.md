@@ -18,7 +18,49 @@ ws://localhost:8083/ws/dashboard → Vue3 大屏 (6 模块, 免登录)
                                 → 管理后台 (7 页面, 需登录)
 ```
 
-## 二、进程与数据边界
+## 二、全链路时序（Mermaid）
+
+```mermaid
+sequenceDiagram
+    participant ESP as ESP32-C3
+    participant MS as Modbus从站
+    participant BR as Bridge子进程
+    participant DB as SQLite(WAL)
+    participant FL as Flask主进程
+    participant WS as WebSocket Hub
+    participant Vue as Vue3大屏
+
+    ESP->>MS: Modbus TCP 读温/湿/人/烟 (2s轮询)
+    ESP->>BR: MQTT上报 8key混一条 payload
+    BR->>DB: INSERT device_status (2s/批)
+    BR->>BR: evaluate_scene_rules() 四层防护
+    alt 规则命中
+        BR->>DB: INSERT alarm_records
+        BR->>BR: execute_scene_actions()
+        BR->>ESP: MQTT write (全关继电器)
+    end
+
+    loop DataWatcher 0.5s轮询
+        FL->>DB: SELECT device_status WHERE updated_at > ?
+        alt 有变化
+            FL->>DB: INSERT device_status_history (30s节流)
+            FL->>WS: broadcast device_status (1.5s节流)
+        end
+    end
+
+    WS->>Vue: WS push {type:data, ts:...}
+    Vue->>Vue: applyEvent() → Pinia状态更新
+    Vue->>Vue: ECharts折线滚动 + 告警滑入滑出(硬上限5条)
+
+    opt 大屏点击继电器
+        Vue->>FL: POST /api/devices/toggle {key,value}
+        FL->>DB: UPDATE device_status
+        FL->>ESP: MQTT write relayX
+        FL->>WS: broadcast relay_changed
+    end
+```
+
+## 三、进程与数据边界
 
 系统由两个独立进程组成，通过 SQLite 解耦：
 
@@ -91,5 +133,102 @@ online_rate = online / 8 * 100%
 | dashboard_config | 大屏运行参数 |
 | users | 账号 + 角色（admin/user） |
 | login_sessions | 在线/离线 + 心跳 |
+
+## 五、表结构（字段级）
+
+所有表均由 `db.init_db()` 在首次运行时创建，WAL 模式 + `busy_timeout=5000` + `synchronous=NORMAL`。
+
+### device_mappings — 路由表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 |
+| gateway_key | TEXT UNIQUE | 网关侧 key：relay1 / temperature / human ... |
+| product_id | TEXT | 虚拟产品：lock-cc / sensor-cc / human-cc ... |
+| device_id | TEXT | 虚拟设备：lock001 / sensorcc / human001 ... |
+| property_name | TEXT | 虚拟属性：switch / temperature / detected ... |
+| enabled | INTEGER | 1=启用，0=禁用（启用时 Bridge 才转发） |
+
+### device_status — 最新值缓存（在线判定依据）
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| gateway_key | TEXT PK | 同 device_mappings.gateway_key |
+| value | TEXT | 字符串存储（展示时按类型解析） |
+| updated_at | TIMESTAMP | **在线判定 = 此值在最近 60s 内** |
+
+### device_status_history — 时序历史
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 |
+| gateway_key | TEXT | relay1~4 / temperature / humidity / human / smoke |
+| value | TEXT | 同 device_status |
+| recorded_at | TEXT | ISO8601 UTC，每 key 30s 节流，60 分钟自动清理 |
+
+### scene_rules — 场景联动规则
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 |
+| name | TEXT | 规则名（如 "高温自动断电"） |
+| trigger_key | TEXT | 触发采集点 |
+| trigger_operator | TEXT | `>` `<` `>=` `<=` `==` `!=` |
+| trigger_value | TEXT | 阈值（字符串，比较时转 float） |
+| action_type | TEXT | `set_relay` / `all_relay_off` / `all_relay_on` / `send_alarm` |
+| alarm_level | TEXT | info / warning / critical |
+| cooldown_sec | INTEGER | 冷却时间（高温 60s / 烟雾 30s / 人感 10s） |
+| trigger_count | INTEGER | **触发次数（持久化，重启不清零）** |
+| last_observed_value / last_observed_count | TEXT / INTEGER | **稳定计数（持久化，跨重启不丢）** |
+
+默认 4 条：高温>35 critical / 烟雾>50 critical / 有人=1 relay2 info / 无人=0 relay2 info。
+
+### alarm_records — 告警三态流转
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增 |
+| rule_id | INTEGER | 关联规则（NULL=手动产生） |
+| level | TEXT | info / warning / critical |
+| status | TEXT | active → acknowledged → cleared |
+| triggered_at / acknowledged_at / cleared_at | TIMESTAMP | 状态流转时间戳 |
+
+### users + login_sessions — 鉴权
+
+- users：id / username(UNIQUE) / password_hash / role(admin\|user) / display_name
+- login_sessions：id / user_id / username / ip / login_at / logout_at / **last_seen**(心跳, 5min离线) / status(online\|offline)
+- 同一用户新登录：`kick_user_sessions()` 把该用户所有旧 session 设 offline，仅保留最新 online
+
+### dashboard_config — 大屏运行参数
+
+key / value / updated_at（KV 表，支持热配置）
+
+## 六、进程树与终止策略
+
+```
+cmd.exe                          ← 用户双击 start_all.bat
+  └─ python app.py               ← Flask 主进程 (PID=A)
+       └─ python fake_bridge.py  ← Bridge 子进程 (PID=B, bridge_runner.start())
+```
+
+**终止必须杀进程树**，否则 Bridge 子进程变成孤儿，继续持有 SQLite WAL 锁。
+
+| 场景 | 策略 | 代码 |
+|------|------|------|
+| stop_all.bat | `taskkill /pid A /F /T` → 杀 Flask + fake_bridge | cmd.exe |
+| stop_all.bat 兜底 | `wmic process where "commandline like '%fake_bridge%' or '%gateway_bridge%'" call terminate` | cmd.exe |
+| e2e teardown | 同样 `taskkill /pid A /F /T` + sweep orphan bridge | conftest.py |
+
+**为何不用 `proc.terminate()`**：Windows 上只杀主进程，子进程不受影响。
+
+## 七、FakeBridge 异常模拟
+
+无硬件时 FakeBridge 每 2 秒写一批模拟数据，内置异常演示：
+
+| 异常 | 机制 | 目的 |
+|------|------|------|
+| 温度冲高 | 每约 120s / 60% 概率，temperature→37，持续 ~20s | 触发高温自动断电（critical 全关） |
+| 烟雾冲高 | 同上，smoke→62，持续 ~20s | 触发烟雾告警联动 |
+| 随机断网 | 每约 80s，随机选一个传感器，断网 75s | 模拟离线场景（75s > 60s 在线阈值，在线率降至 7/8=87.5%） |
 
 相关文档：[00-项目概述](00-overview.md) ｜ [04-API文档](04-api.md) ｜ [03-演进历史](03-evolution.md)
