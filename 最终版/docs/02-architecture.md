@@ -216,7 +216,7 @@ cmd.exe                          ← 用户双击 start_all.bat
 | 场景 | 策略 | 代码 |
 |------|------|------|
 | stop_all.bat | `taskkill /pid A /F /T` 杀 Flask + fake_bridge | cmd.exe |
-| stop_all.bat 兜底 | `wmic process where "commandline like '%fake_bridge%'" call terminate` | cmd.exe |
+| stop_all.bat 兜底 | `wmic process where "commandline like '%fake_bridge%' or commandline like '%gateway_bridge%'" call terminate` | cmd.exe |
 | e2e teardown 主杀 | `taskkill /pid <Flask_PID> /F /T` — 进程树级联杀 | conftest.py |
 | e2e teardown 兜底 | 从 Flask stdout 解析 bridge PID（`[runner] pid=NNN`），定向 `taskkill /pid NNN /F` — 比 CIM 扫全进程快且无副作用 | conftest.py |
 
