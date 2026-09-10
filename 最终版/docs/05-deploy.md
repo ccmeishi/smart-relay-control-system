@@ -50,6 +50,29 @@ stop_all.bat
 start_all.bat  :: 选 6，会先 kill 8083 再删 iot_platform.db*
 ```
 
+### stop_all.bat 内部行为
+
+Windows 上只杀 Flask PID 不够——`bridge_runner.start()` 启动的 `fake_bridge.py` 是独立子进程，`proc.terminate()` 不会级联终止，会变成孤儿持有 SQLite WAL 锁。stop_all.bat 分三步：
+
+| 步骤 | 操作 | 目的 |
+|------|------|------|
+| 1 | `for /f "tokens=5" %p in ('netstat -ano \| findstr :8083 \| findstr LISTENING') do taskkill /pid %p /F /T` | 按端口找 Flask PID，`/T` 级联杀掉 fake_bridge 子进程 |
+| 2 | `wmic process where "commandline like '%fake_bridge%' or commandline like '%gateway_bridge%'" call terminate` | 兜底扫残留——防止步骤 1 漏杀（如之前多轮启动累积的孤儿） |
+| 3 | 等 3 秒后 `netstat` 再查 8083 端口 | 验证已释放 |
+
+**为何不用 `taskkill /im python.exe`**：会杀掉系统上所有 Python 进程（包括 IDE、代理等），误伤风险大。按端口 + wmic 命令行匹配是精确杀。
+
+### 日志文件
+
+| 路径 | 写入者 | 内容 |
+|------|--------|------|
+| `logs/day102.log` | Flask main | 启动信息、请求摘要、错误栈 |
+| `logs/bridge.log` | 真实 gateway_bridge | MQTT 订阅/发布、规则触发 |
+| `logs/fake_bridge.log` | FakeBridge | 2s tick 输出、异常冲高、告警触发 |
+| backend/app.py 控制台 | Flask | 同 day102.log（分级 logger 双写） |
+
+关闭日志：环境变量 `LOG_LEVEL=ERROR`（默认 INFO）。
+
 ## 三、生产环境建议
 
 本项目以教学为主，生产部署需补充以下措施。
