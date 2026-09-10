@@ -134,33 +134,34 @@ watch(() => store.alarmStats, renderPie, { deep: true })
 .btn-danger { border-color: rgba(245,108,108,0.5); color: #f56c6c; }
 .btn-danger:hover { background: rgba(245,108,108,0.15); box-shadow: 0 0 8px rgba(245,108,108,0.3); }
 
-.alarm-stats { display: flex; gap: 10px; margin-bottom: 8px; }
+.alarm-stats { display: flex; gap: 12px; margin-bottom: 10px; }
 .alarm-stat {
   flex: 1; text-align: center;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px; padding: 8px 0;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px; padding: 12px 0;
 }
-.alarm-stat.active { border-color: rgba(245,108,108,0.4); }
-.alarm-stat.done { border-color: rgba(103,194,58,0.4); }
-.num { font-size: 24px; }
+.alarm-stat.active { border-color: rgba(245,108,108,0.4); background: rgba(245,108,108,0.06); }
+.alarm-stat.done { border-color: rgba(103,194,58,0.4); background: rgba(103,194,58,0.06); }
+.num { font-size: 30px; }
 .alarm-stat.active .num { color: var(--red); }
 .alarm-stat.done .num { color: var(--green); }
-.lbl { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.lbl { font-size: 13px; color: #b8c4d4; margin-top: 4px; }
 
-.pie { height: 130px; flex-shrink: 0; }
+/* 饼图撑大: AlarmPanel 现在占屏2左大列(2fr, 跨2行), 给 180px */
+.pie { height: 180px; flex-shrink: 0; margin-bottom: 6px; }
 
 .alarm-list {
   flex: 1; overflow-y: auto;
   min-height: 0;
-  border-top: 1px solid rgba(255,255,255,0.06);
-  padding-top: 6px;
+  border-top: 1px solid rgba(255,255,255,0.08);
+  padding-top: 8px;
 }
 .alarm-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 6px 4px;
+  padding: 7px 6px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
-  font-size: 12px;
+  font-size: 13px;
   opacity: 0.6;
 }
 .alarm-item.st-active { opacity: 1; }

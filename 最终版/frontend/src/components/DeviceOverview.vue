@@ -35,43 +35,45 @@ const store = useDashboardStore()
 </script>
 
 <style scoped>
-/* 让 panel-body 内容均匀分布, 消除底部空白 */
-.panel-body { justify-content: space-around; }
+/* panel-body 内容撑满, 不用 space-around 避免底部空白 */
+.panel-body { justify-content: flex-start; gap: 10px; }
 
-.total-wrap { text-align: center; padding: 6px 0 12px; }
-.total-label { font-size: 14px; color: var(--text-dim); margin-bottom: 4px; }
-.total-num { font-size: 46px; line-height: 1; }
+.total-wrap { text-align: center; padding: 4px 0 8px; flex-shrink: 0; }
+.total-label { font-size: 15px; color: #b8c4d4; margin-bottom: 6px; letter-spacing: 2px; }
+.total-num { font-size: 52px; line-height: 1; }
 
-.stat-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.stat-row { display: flex; gap: 14px; flex-shrink: 0; }
 .stat-card {
   flex: 1;
-  background: rgba(255,255,255,0.03);
-  border: 1px solid rgba(255,255,255,0.08);
-  border-radius: 8px;
-  padding: 12px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 14px 10px;
   text-align: center;
 }
-.stat-card.online { border-color: rgba(103,194,58,0.4); }
-.stat-card.offline { border-color: rgba(245,108,108,0.4); }
-.stat-num { font-size: 30px; }
+.stat-card.online { border-color: rgba(103,194,58,0.4); background: rgba(103,194,58,0.06); }
+.stat-card.offline { border-color: rgba(245,108,108,0.4); background: rgba(245,108,108,0.06); }
+.stat-num { font-size: 34px; }
 .stat-card.online .stat-num { color: var(--green); text-shadow: 0 0 10px rgba(103,194,58,0.5); }
 .stat-card.offline .stat-num { color: var(--red); text-shadow: 0 0 10px rgba(245,108,108,0.5); }
-.stat-name { font-size: 13px; color: var(--text-dim); margin-top: 4px; }
+.stat-name { font-size: 14px; color: #b8c4d4; margin-top: 6px; letter-spacing: 1px; }
 
+/* 在线率 bar 紧贴 stat-row, 不留空白 */
+.rate-bar-wrap { flex-shrink: 0; }
 .rate-bar-label {
   display: flex; justify-content: space-between;
-  font-size: 13px; color: var(--text-dim); margin-bottom: 6px;
+  font-size: 14px; color: #b8c4d4; margin-bottom: 8px;
 }
-.rate-val { color: #6db3ff; font-weight: 600; }
+.rate-val { color: #6db3ff; font-weight: 600; font-size: 16px; }
 .rate-bar {
-  height: 10px; border-radius: 5px;
+  height: 12px; border-radius: 6px;
   background: rgba(255,255,255,0.08);
   overflow: hidden;
 }
 .rate-bar-fill {
   height: 100%;
   background: linear-gradient(90deg, #409eff, #67c23a);
-  border-radius: 5px;
+  border-radius: 6px;
   box-shadow: 0 0 10px rgba(103,194,58,0.6);
   transition: width 0.6s ease;
 }
