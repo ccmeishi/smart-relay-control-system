@@ -85,7 +85,162 @@
 | `history_tick` | 4 传感器历史点数组 | 每 5s |
 | `overview_tick` | 设备概览统计 | 每 5s |
 
-## 五、典型调用示例
+## 五、错误响应格式
+
+所有接口返回 `{ok: boolean, error?: string}` 结构。
+
+| HTTP | 场景 | 示例 |
+|------|------|------|
+| 200 | 成功 | `{"ok": true, "total": 8, "online": 8, "online_rate": 100}` |
+| 400 | 参数校验失败 | `{"ok": false, "error": "gateway_key 格式错误"}` |
+| 401 | 未登录 | `{"ok": false, "error": "未登录"}` |
+| 403 | 权限不足 | `{"ok": false, "error": "需要管理员权限"}` |
+| 404 | 资源不存在 | `{"ok": false, "error": "映射不存在"}` |
+
+## 六、核心端点响应示例
+
+### GET /api/overview
+
+```json
+{
+  "ok": true,
+  "total": 8,
+  "online": 8,
+  "offline": 0,
+  "online_rate": 100
+}
+```
+
+### GET /api/device-status
+
+```json
+{
+  "ok": true,
+  "data": {
+    "relay1": "1", "relay2": "0", "relay3": "1", "relay4": "0",
+    "temperature": "26.5", "humidity": "58.0", "human": "0", "smoke": "12"
+  }
+}
+```
+
+### GET /api/alarm-stats
+
+```json
+{
+  "ok": true,
+  "by_level": {"info": 0, "warning": 0, "critical": 0},
+  "by_status": {"active": 0, "acknowledged": 0, "cleared": 0},
+  "today": 0,
+  "active_critical": 0
+}
+```
+
+### GET /api/scene-rules
+
+```json
+{
+  "ok": true,
+  "rules": [
+    {
+      "id": 1,
+      "name": "高温自动断电",
+      "trigger_key": "temperature",
+      "trigger_operator": ">",
+      "trigger_value": "35",
+      "action_type": "all_relay_off",
+      "alarm_level": "critical",
+      "cooldown_sec": 60,
+      "trigger_count": 15,
+      "enabled": true,
+      "last_triggered": "2026-09-10 07:45:00"
+    }
+  ]
+}
+```
+
+### POST /api/devices/toggle
+
+请求：
+```json
+{ "key": "relay1", "value": "0" }
+```
+
+响应：
+```json
+{
+  "ok": true,
+  "key": "relay1",
+  "value": "0",
+  "published": true,
+  "msg": "继电器 relay1 已关闭，MQTT 下发成功"
+}
+```
+
+`published=true` 表示 MQTT write 已发送（FakeBridge 模式下始终为 true，跳过 MQTT 实际发布）。
+
+## 七、WebSocket 事件 data 结构
+
+### device_status
+```json
+{
+  "type": "device_status",
+  "data": {
+    "relay1": "1", "relay2": "0", ..., "smoke": "12"
+  },
+  "ts": 1725854400.123
+}
+```
+
+### alarm_new
+```json
+{
+  "type": "alarm_new",
+  "data": {
+    "id": 524,
+    "level": "critical",
+    "status": "active",
+    "rule_name": "高温自动断电",
+    "source_key": "temperature",
+    "source_value": "37",
+    "message": "规则「高温自动断电」触发: temperature=37, 已执行 全关继电器",
+    "triggered_at": "2026-09-10 07:45:00"
+  },
+  "ts": 1725854400.456
+}
+```
+
+### rule_triggered
+```json
+{
+  "type": "rule_triggered",
+  "data": {
+    "id": 1,
+    "name": "高温自动断电",
+    "action_type": "all_relay_off",
+    "trigger_count": 16
+  },
+  "ts": 1725854400.789
+}
+```
+
+### relay_changed
+```json
+{
+  "type": "relay_changed",
+  "data": {
+    "key": "relay1",
+    "value": "0",
+    "published": true
+  },
+  "ts": 1725854401.012
+}
+```
+
+### history_tick / overview_tick — 定时推送
+- history_tick：4 个传感器最近 30 个时序点数组（每 30s 写一个点）
+- overview_tick：同 `/api/overview` 响应体
+
+## 八、典型调用示例
 
 ```bash
 # 概览
