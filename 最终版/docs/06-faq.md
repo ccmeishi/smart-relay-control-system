@@ -119,4 +119,37 @@ start_all.bat
 :: 下次启动自动建表 + 预填充 8 路由 + 2 用户 + 4 规则
 ```
 
+## 18. pip install 拉到 pymodbus 新版本，测试全挂
+
+**现象**：`pip install -r requirements-dev.txt` 后跑 pytest，22 个测试报 `ModbusTcpClient.__init__() takes 2 positional arguments but N were given`。
+
+**根因**：pymodbus 3.15.x 改了构造函数签名——位置参数 `host, port` 改为关键字参数 `host=..., port=...`。项目旧测试用 `ModbusTcpClient(host, port, timeout=2)` 直接挂。
+
+**解决**：`requirements-dev.txt` 已精确锁定 `pymodbus==3.6.9`，不要升级：
+```bat
+pip install pymodbus==3.6.9 --index-url https://pypi.org/simple/
+```
+
+## 19. 告警面板越拉越长，场景联动被挤没
+
+**根因**：FakeBridge 每秒触发提示级规则（有人自动开灯/无人自动关灯），告警列表不断 unshift 新条目，旧前端只设了 20 条上限。
+
+**修复**（已内置）：
+- 前端 store 硬上限 **5 条**：`dashboard.js` 中 `while (this.recentAlarms.length > 5) { this.recentAlarms.pop() }`
+- REST 首屏拉 `limit=5`：`api.recentAlarms(5)`
+- CSS `.alarm-list` 加 `max-height: 200px`：超过 5 条时面板内滚动，不撑开容器
+
+新告警从顶部弹入，最旧的从底部滑出，面板高度恒定。
+
+## 20. e2e 测试首轮 SQLite "attempt to write a readonly database"
+
+**根因**：前一轮 e2e 的 teardown 只调用 `proc.terminate()`（Flask PID），`bridge_runner.start()` 启动的 `fake_bridge.py` 子进程变成孤儿，继续持有 SQLite WAL 锁。下一轮 e2e 启动新 Flask 时，WAL 文件被孤儿进程独占。
+
+**修复**（已内置）：`tests/e2e/conftest.py` teardown：
+1. Windows 上用 `taskkill /pid <PID> /F /T` 杀整个进程树（Flask + fake_bridge）
+2. `wmic sweep` 兜底扫残留的 `fake_bridge` / `gateway_bridge` 孤儿进程
+3. 非 Windows 回退到 `proc.terminate()` + `proc.kill()` + `proc.wait()`
+
+**验证**：连续跑三轮 `pytest tests/e2e/ -v`，三轮都应 8/8 通过。
+
 相关文档：[01-快速开始](01-quickstart.md) ｜ [05-部署指南](05-deploy.md) ｜ [02-架构设计](02-architecture.md)
