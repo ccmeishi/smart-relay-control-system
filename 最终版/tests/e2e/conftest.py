@@ -1,8 +1,10 @@
 """E2E test fixtures — start the integrated backend with FakeBridge."""
 import os
+import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from urllib.request import Request, urlopen
@@ -25,7 +27,11 @@ def _free_port():
 def backend():
     """Start integrated backend with DAY102_FORCE_FAKE=1 on a random port.
 
-    yields dict: {base_url, port, proc}
+    yields dict: {base_url, port, proc, bridge_pid}
+
+    bridge_pid is parsed from backend stdout (bridge_runner.py prints
+    "[runner] 数据源已启动 pid=NNNN ..."). Used in teardown for precise kill
+    as fallback when taskkill /T doesn't reach the bridge.
     """
     port = _free_port()
     env = os.environ.copy()
@@ -41,14 +47,40 @@ def backend():
         env=env,
     )
 
+    # ---- Read stdout in background thread, capture bridge PID ----
+    # bridge_runner.py prints: "[runner] 数据源已启动 pid=12345 → fake_bridge.py"
+    bridge_pid = None
+    pid_capture_event = threading.Event()
+
+    def _stdout_reader():
+        nonlocal bridge_pid
+        if not proc.stdout:
+            return
+        for raw_line in proc.stdout:
+            line = raw_line.decode("utf-8", errors="replace").strip()
+            m = re.search(r"pid=(\d+)", line)
+            if m:
+                bridge_pid = int(m.group(1))
+                pid_capture_event.set()
+                # Keep reading but stop looking for PID (it appears once)
+                break
+        # Drain remaining so pipe buffer doesn't fill up and block Flask
+        try:
+            for _ in proc.stdout:
+                pass
+        except Exception:
+            pass
+
+    reader = threading.Thread(target=_stdout_reader, daemon=True)
+    reader.start()
+
     base_url = f"http://127.0.0.1:{port}"
     deadline = time.time() + 30
     ready = False
 
     while time.time() < deadline:
         if proc.poll() is not None:
-            out = proc.stdout.read().decode("utf-8", errors="replace") if proc.stdout else ""
-            pytest.fail(f"Backend exited early:\n{out}")
+            pytest.fail("Backend exited early; check logs/ for details")
         try:
             req = Request(f"{base_url}/api/overview")
             with urlopen(req, timeout=2) as resp:
@@ -60,27 +92,36 @@ def backend():
 
     if not ready:
         proc.terminate()
-        try:
-            out, _ = proc.communicate(timeout=3)
-            print("Backend output:", out.decode("utf-8", errors="replace"))
-        except Exception:
-            pass
         pytest.fail("Backend failed to start within 30s")
+
+    # Wait for bridge PID line to be captured (or timeout 5s)
+    pid_capture_event.wait(timeout=5)
 
     # Give FakeBridge a few seconds to start writing data
     time.sleep(3)
 
-    yield {"base_url": base_url, "port": port, "proc": proc}
+    fixture = {"base_url": base_url, "port": port, "proc": proc, "bridge_pid": bridge_pid}
+    if bridge_pid:
+        print(f"[e2e] Captured bridge PID: {bridge_pid}")
 
-    # ---- Teardown: kill the entire process tree (Flask + bridge subprocess) ----
-    # On Windows, proc.terminate() only kills Flask; bridge_runner.start() spawns
-    # fake_bridge.py as a subprocess that becomes orphan and holds SQLite WAL lock.
-    # Use taskkill /T /F to kill the whole tree by PID.
+    yield fixture
+
+    # ---- Teardown: precise kill sequence ----
+    # Primary: kill the ENTIRE Flask process tree with /T
+    # Fallback: kill bridge directly by captured PID (handles edge cases where
+    # /T somehow misses — e.g. if bridge was restarted by watch thread after /T)
     if sys.platform == "win32":
+        # Primary kill: Flask + all children via /T
         subprocess.run(
             ["taskkill", "/pid", str(proc.pid), "/T", "/F"],
             capture_output=True, timeout=10,
         )
+        # Precise fallback: kill bridge PID we captured
+        if bridge_pid:
+            subprocess.run(
+                ["taskkill", "/pid", str(bridge_pid), "/F"],
+                capture_output=True, timeout=5,
+            )
     else:
         proc.terminate()
         try:
@@ -88,25 +129,3 @@ def backend():
         except subprocess.TimeoutExpired:
             proc.kill()
             proc.wait()
-
-    # Also sweep any orphan fake_bridge / gateway_bridge processes
-    # that might have survived (e.g. from a prior crashed run)
-    try:
-        import re
-        result = subprocess.run(
-            ["tasklist", "/fo", "csv", "/nh"],
-            capture_output=True, text=True, timeout=10,
-        )
-        for line in result.stdout.strip().splitlines():
-            if "python.exe" in line and (
-                "fake_bridge" in line or "gateway_bridge" in line
-            ):
-                m = re.search(r',(\d+)$', line)
-                if m:
-                    pid = m.group(1)
-                    subprocess.run(
-                        ["taskkill", "/pid", pid, "/F"],
-                        capture_output=True, timeout=5,
-                    )
-    except Exception:
-        pass
