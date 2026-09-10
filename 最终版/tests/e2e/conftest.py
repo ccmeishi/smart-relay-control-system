@@ -49,6 +49,11 @@ def backend():
 
     # ---- Read stdout in background thread, capture bridge PID ----
     # bridge_runner.py prints: "[runner] 数据源已启动 pid=12345 → fake_bridge.py"
+    # NOTE: bridge_runner.watch() can restart the bridge after crash+5s, but
+    # we only capture the INITIAL PID. If bridge restarts mid-test, this PID
+    # is stale — but that's OK because the PRIMARY kill (taskkill /T) handles
+    # any child of Flask regardless of PID. The captured PID is just a fast
+    # precise fallback for the common case.
     bridge_pid = None
     pid_capture_event = threading.Event()
 

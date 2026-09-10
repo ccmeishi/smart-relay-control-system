@@ -145,11 +145,12 @@ pip install pymodbus==3.6.9 --index-url https://pypi.org/simple/
 
 **根因**：前一轮 e2e 的 teardown 只调用 `proc.terminate()`（Flask PID），`bridge_runner.start()` 启动的 `fake_bridge.py` 子进程变成孤儿，继续持有 SQLite WAL 锁。下一轮 e2e 启动新 Flask 时，WAL 文件被孤儿进程独占。
 
-**修复**（已内置）：`tests/e2e/conftest.py` teardown：
-1. Windows 上用 `taskkill /pid <PID> /F /T` 杀整个进程树（Flask + fake_bridge）
-2. `wmic sweep` 兜底扫残留的 `fake_bridge` / `gateway_bridge` 孤儿进程
-3. 非 Windows 回退到 `proc.terminate()` + `proc.kill()` + `proc.wait()`
+**修复**（已内置）：`tests/e2e/conftest.py` teardown 两步杀：
+1. **主杀**：`taskkill /pid <Flask_PID> /T /F` — 杀掉 Flask + 所有子进程（包括 bridge）
+2. **精确兜底**：从 Flask stdout 解析 bridge PID（`bridge_runner.py` 第 53 行 `print("pid=NNN")`），定向 `taskkill /pid <bridge_pid> /F`。比 PowerShell CIM 扫描全进程快 10 倍以上，且只杀自己的 bridge，不会误伤其他 demo
 
-**验证**：连续跑三轮 `pytest tests/e2e/ -v`，三轮都应 8/8 通过。
+**为何不用 CIM/wmic 扫全进程**：CIM 查所有 Python 的 CommandLine 需 2-3 秒；且全局扫描会在"跑 e2e 时另一个演示 backend 正在跑"的情况下把演示用 bridge 一起杀掉。定向 PID 是更精准无副作用的方案。
+
+**验证**：连续跑两轮 `pytest tests/e2e/ -v`，两轮都应 8/8 通过（第二轮不应该有上一轮遗留的孤儿）。
 
 相关文档：[01-快速开始](01-quickstart.md) ｜ [05-部署指南](05-deploy.md) ｜ [02-架构设计](02-architecture.md)

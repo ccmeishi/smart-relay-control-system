@@ -215,11 +215,17 @@ cmd.exe                          ← 用户双击 start_all.bat
 
 | 场景 | 策略 | 代码 |
 |------|------|------|
-| stop_all.bat | `taskkill /pid A /F /T` → 杀 Flask + fake_bridge | cmd.exe |
-| stop_all.bat 兜底 | `wmic process where "commandline like '%fake_bridge%' or '%gateway_bridge%'" call terminate` | cmd.exe |
-| e2e teardown | 同样 `taskkill /pid A /F /T` + sweep orphan bridge | conftest.py |
+| stop_all.bat | `taskkill /pid A /F /T` 杀 Flask + fake_bridge | cmd.exe |
+| stop_all.bat 兜底 | `wmic process where "commandline like '%fake_bridge%'" call terminate` | cmd.exe |
+| e2e teardown 主杀 | `taskkill /pid <Flask_PID> /F /T` — 进程树级联杀 | conftest.py |
+| e2e teardown 兜底 | 从 Flask stdout 解析 bridge PID（`[runner] pid=NNN`），定向 `taskkill /pid NNN /F` — 比 CIM 扫全进程快且无副作用 | conftest.py |
 
 **为何不用 `proc.terminate()`**：Windows 上只杀主进程，子进程不受影响。
+
+**为何 e2e 不用 PowerShell CIM 扫全进程**：
+1. CIM 查询所有 Python CommandLine 需 2-3 秒（WMI 开销远大于直接 taskkill）
+2. 全局扫描会误伤同时运行的其他 demo backend 的 bridge 进程
+3. bridge_runner.py 第 53 行已经 print PID，e2e 启动时就能抓到，定向 kill 最精准
 
 ## 七、FakeBridge 异常模拟
 
