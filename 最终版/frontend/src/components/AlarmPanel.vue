@@ -134,12 +134,12 @@ watch(() => store.alarmStats, renderPie, { deep: true })
 .btn-danger { border-color: rgba(245,108,108,0.5); color: #f56c6c; }
 .btn-danger:hover { background: rgba(245,108,108,0.15); box-shadow: 0 0 8px rgba(245,108,108,0.3); }
 
-.alarm-stats { display: flex; gap: 12px; margin-bottom: 10px; }
+.alarm-stats { display: flex; gap: 12px; margin-bottom: 6px; flex-shrink: 0; }
 .alarm-stat {
   flex: 1; text-align: center;
   background: rgba(255,255,255,0.04);
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 10px; padding: 12px 0;
+  border-radius: 10px; padding: 10px 0;
 }
 .alarm-stat.active { border-color: rgba(245,108,108,0.4); background: rgba(245,108,108,0.06); }
 .alarm-stat.done { border-color: rgba(103,194,58,0.4); background: rgba(103,194,58,0.06); }
@@ -148,18 +148,18 @@ watch(() => store.alarmStats, renderPie, { deep: true })
 .alarm-stat.done .num { color: var(--green); }
 .lbl { font-size: 13px; color: #b8c4d4; margin-top: 4px; }
 
-/* 饼图撑大: AlarmPanel 现在占屏2左大列(2fr, 跨2行), 给 180px */
-.pie { height: 180px; flex-shrink: 0; margin-bottom: 6px; }
+/* 饼图自适应撑满中间空间, 不再固定 180px */
+.pie { flex: 1; min-height: 140px; margin-bottom: 4px; }
 
 .alarm-list {
   flex: 1; overflow-y: auto;
   min-height: 0;
   border-top: 1px solid rgba(255,255,255,0.08);
-  padding-top: 8px;
+  padding-top: 6px;
 }
 .alarm-item {
   display: flex; align-items: center; gap: 8px;
-  padding: 7px 6px;
+  padding: 6px 6px;
   border-bottom: 1px solid rgba(255,255,255,0.04);
   font-size: 13px;
   opacity: 0.6;

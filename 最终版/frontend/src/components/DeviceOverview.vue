@@ -35,10 +35,10 @@ const store = useDashboardStore()
 </script>
 
 <style scoped>
-/* panel-body 内容撑满, 不用 space-around 避免底部空白 */
-.panel-body { justify-content: flex-start; gap: 10px; }
+/* 让三块均匀撑满 panel-body 高度, 不留空白 */
+.panel-body { justify-content: space-between; }
 
-.total-wrap { text-align: center; padding: 4px 0 8px; flex-shrink: 0; }
+.total-wrap { text-align: center; flex-shrink: 0; }
 .total-label { font-size: 15px; color: #b8c4d4; margin-bottom: 6px; letter-spacing: 2px; }
 .total-num { font-size: 52px; line-height: 1; }
 
@@ -58,8 +58,8 @@ const store = useDashboardStore()
 .stat-card.offline .stat-num { color: var(--red); text-shadow: 0 0 10px rgba(245,108,108,0.5); }
 .stat-name { font-size: 14px; color: #b8c4d4; margin-top: 6px; letter-spacing: 1px; }
 
-/* 在线率 bar 紧贴 stat-row, 不留空白 */
-.rate-bar-wrap { flex-shrink: 0; }
+/* rate-bar-wrap 吃掉剩余空间, 紧贴 stat-row */
+.rate-bar-wrap { flex-shrink: 0; padding-top: 4px; }
 .rate-bar-label {
   display: flex; justify-content: space-between;
   font-size: 14px; color: #b8c4d4; margin-bottom: 8px;
