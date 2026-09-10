@@ -2,7 +2,7 @@
 # See backend/requirements.txt for: flask, flask-sock, paho-mqtt
 
 # Test dependencies (install: pip install -r requirements-dev.txt)
-pymodbus>=3.6.0,<4.0
+pymodbus==3.6.9         # 精确锁定, 3.15.x 改了 ModbusTcpClient 构造函数签名导致测试失败
 paho-mqtt>=2.0
 pytest>=8.0
 pytest-asyncio>=0.23
