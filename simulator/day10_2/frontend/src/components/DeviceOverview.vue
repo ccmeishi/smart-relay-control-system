@@ -35,6 +35,9 @@ const store = useDashboardStore()
 </script>
 
 <style scoped>
+/* 让 panel-body 内容均匀分布, 消除底部空白 */
+.panel-body { justify-content: space-around; }
+
 .total-wrap { text-align: center; padding: 6px 0 12px; }
 .total-label { font-size: 14px; color: var(--text-dim); margin-bottom: 4px; }
 .total-num { font-size: 46px; line-height: 1; }

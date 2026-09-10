@@ -11,6 +11,7 @@ import socket
 import subprocess
 import threading
 
+from log_setup import logger
 import db
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,19 +51,20 @@ class BridgeRunner:
             cwd=os.path.dirname(self.script_path),
         )
         print(f"[runner] 数据源已启动 pid={self.proc.pid} → {os.path.basename(self.script_path)}")
-        print(f"[runner] 日志: {self.log_path}")
+        logger.info(f"[runner] 数据源已启动 pid={self.proc.pid} → {os.path.basename(self.script_path)}")
+        logger.info(f"[runner] 日志: {self.log_path}")
 
     def watch(self):
         """监控循环 (放独立线程跑)."""
         while self.should_run:
             if self.proc is None or self.proc.poll() is not None:
                 if self.should_run:
-                    print("[runner] 数据源进程退出, 5 秒后重启...")
+                    logger.warning("[runner] 数据源进程退出, 5 秒后重启...")
                     time.sleep(5)
                     try:
                         self.start()
                     except Exception as e:
-                        print(f"[runner] 重启失败: {e}")
+                        logger.error(f"[runner] 重启失败: {e}")
                         time.sleep(5)
             time.sleep(3)
 
@@ -92,15 +94,15 @@ def choose_and_start():
     force_fake = os.environ.get("DAY102_FORCE_FAKE", "") == "1"
 
     if force_fake:
-        print("[runner] DAY102_FORCE_FAKE=1 → 强制 FakeBridge 模拟模式")
+        logger.info("[runner] DAY102_FORCE_FAKE=1 → 强制 FakeBridge 模拟模式")
         runner = BridgeRunner(fake_bridge, log_name="fake_bridge.log")
         source = "simulator"
     elif mqtt_reachable():
-        print("[runner] MQTT broker 可达 → 启动真实 Bridge")
+        logger.info("[runner] MQTT broker 可达 → 启动真实 Bridge")
         runner = BridgeRunner(real_bridge, log_name="bridge.log")
         source = "bridge"
     else:
-        print("[runner] MQTT broker 不可达 → 回退到 FakeBridge (模拟数据)")
+        logger.info("[runner] MQTT broker 不可达 → 回退到 FakeBridge (模拟数据)")
         runner = BridgeRunner(fake_bridge, log_name="fake_bridge.log")
         source = "simulator"
 

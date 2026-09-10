@@ -8,7 +8,7 @@ export const useDashboardStore = defineStore('dashboard', {
     overview: { total: 0, online: 0, offline: 0, online_rate: 0 },
     deviceStatus: {},          // { relay1: '1', temperature: '28.5', ... }
     alarmStats: { total: 0, active: 0, acknowledged: 0, cleared: 0,
-                  info: 0, warning: 0, critical: 0, active_critical: 0,
+                  info: 0, warning: 0, critical: 0, active_critical: 0, today: 0,
                   by_level: { info: 0, warning: 0, critical: 0 } },
     recentAlarms: [],
     sceneRules: [],
@@ -69,6 +69,30 @@ export const useDashboardStore = defineStore('dashboard', {
       } catch (e) {
         console.error('[store] toggle failed', e)
       }
+    },
+
+    // P1-4: 告警操作 (本地立刻反映, 后台轮询校正)
+    async ackAlarm(id) {
+      try {
+        await api.ackAlarm(id)
+        const t = this.recentAlarms.find((a) => a.id === id)
+        if (t) t.status = 'acknowledged'
+        this.pollAlarmStats()
+      } catch (e) { console.error('[store] ackAlarm failed', e) }
+    },
+    async ackAllAlarms() {
+      try {
+        await api.ackAllAlarms()
+        this.recentAlarms.forEach((a) => { if (a.status === 'active') a.status = 'acknowledged' })
+        this.pollAlarmStats()
+      } catch (e) { console.error('[store] ackAll failed', e) }
+    },
+    async clearAllAlarms() {
+      try {
+        await api.clearAllAlarms()
+        this.recentAlarms.forEach((a) => { a.status = 'cleared' })
+        this.pollAlarmStats()
+      } catch (e) { console.error('[store] clearAll failed', e) }
     },
 
     // WS 事件分发

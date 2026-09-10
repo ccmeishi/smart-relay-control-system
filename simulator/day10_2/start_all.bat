@@ -1,71 +1,114 @@
 @echo off
 setlocal enabledelayedexpansion
-chcp 65001 >nul
-cd /d %~dp0
+chcp 65001 >nul 2>&1
+title Day10.2 IoT Dashboard - Start All
+cd /d "%~dp0"
 
 echo ============================================================
-echo   Day10.2 智慧物联网大屏 (Vue3 + ECharts + WebSocket)
+echo   Day10.2 Smart IoT Dashboard
+echo   Vue3 + ECharts + WebSocket + Flask + MQTT Bridge
 echo ============================================================
+echo.
 
-REM ---- 1. 检测 Python ----
+REM ---- 1. Check Python ----
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo [X] 未检测到 Python, 请先安装 Python 3.10+
-    pause & exit /b 1
+    echo [ERROR] Python not found. Please install Python 3.10+ and add to PATH.
+    pause
+    exit /b 1
 )
 
-REM ---- 2. 检测关键依赖库 ----
+REM ---- 2. Check backend dependencies ----
+echo [Check] Verifying backend dependencies (flask, flask-sock, paho-mqtt)...
 python -c "import flask, flask_sock, paho.mqtt" >nul 2>&1
 if errorlevel 1 (
-    echo [!] 缺少后端依赖, 正在安装 flask flask-sock paho-mqtt ...
+    echo [WARN] Missing dependencies, installing flask flask-sock paho-mqtt ...
     python -m pip install flask flask-sock paho-mqtt
+    if errorlevel 1 (
+        echo [ERROR] pip install failed. Please run manually:
+        echo         pip install flask flask-sock paho-mqtt
+        pause
+        exit /b 1
+    )
 )
 
-REM ---- 3. 端口冲突检测 (8083) ----
+REM ---- 3. Port conflict check (8083) ----
+echo [Check] Checking port 8083 (Dashboard backend)...
 netstat -ano | findstr ":8083 " | findstr "LISTENING" >nul 2>&1
 if not errorlevel 1 (
-    echo [!] 端口 8083 已被占用, 大屏后端可能已在运行
-    echo     如需重启请先关闭占用 8083 的窗口
-    choice /c YN /m "是否仍要继续"
-    if errorlevel 2 exit /b 0
+    echo [WARN] Port 8083 is already in use. Dashboard backend may already be running.
+    echo        Close the old backend window first if you want to restart.
+    choice /c YN /m "Continue anyway - Y to start, N to cancel"
+    if errorlevel 2 (
+        echo [Info] User cancelled. Exiting.
+        pause
+        exit /b 0
+    )
 )
 
-REM ---- 4. 检测前端构建产物, 缺失则自动构建 ----
+REM ---- 4. Check frontend build, build automatically if missing ----
 if not exist "frontend\dist\index.html" (
-    echo [!] 未检测到前端构建产物, 开始构建 (首次需要 Node 18+)...
+    echo [Build] Frontend dist not found, building now - requires Node 18+ on first run...
     where node >nul 2>&1
     if errorlevel 1 (
-        echo [X] 未检测到 Node.js, 无法构建前端
-        echo     请安装 Node 18+ 后执行: cd frontend ^&^& npm install ^&^& npm run build
-        pause & exit /b 1
+        echo [ERROR] Node.js not found, cannot build frontend.
+        echo         Install Node 18+ then run manually:
+        echo            cd frontend
+        echo            npm install
+        echo            npm run build
+        pause
+        exit /b 1
     )
     pushd frontend
     call npm install
+    if errorlevel 1 (
+        echo [ERROR] npm install failed.
+        popd
+        pause
+        exit /b 1
+    )
     call npm run build
+    if errorlevel 1 (
+        echo [ERROR] npm run build failed.
+        popd
+        pause
+        exit /b 1
+    )
     popd
+    echo [Build] Frontend build completed.
 )
 
-REM ---- 5. 启动后端 (自动选择真实 Bridge 或 FakeBridge) ----
-echo [启动] 后端服务 (端口 8083, 内含数据源进程监控)...
+REM ---- 5. Start backend (auto-selects real Bridge or FakeBridge) ----
+echo.
+echo [Start] Backend service on port 8083 (data source monitor included)...
 start "Day10.2-Backend" cmd /k "cd /d %~dp0backend && python app.py"
 
-REM ---- 6. 等待后端就绪后打开浏览器 ----
-echo [等待] 8 秒后打开大屏...
+REM ---- 6. Wait for backend, then open browser ----
+echo [Wait] Opening dashboard in 8 seconds...
 timeout /t 8 /nobreak >nul
-start http://localhost:8083
+start "" "http://localhost:8083"
 
 echo.
 echo ============================================================
-echo   大屏已启动!
-echo   - 大屏地址:   http://localhost:8083
-echo   - REST API:  http://localhost:8083/api/overview
-echo   - WebSocket: ws://localhost:8083/ws/dashboard
-echo.
-echo   数据源:
-echo     * MQTT 可达  -^> 真实 Bridge (ESP32 -> EMQX -> 大屏)
-echo     * MQTT 不可达 -^> FakeBridge 模拟数据 (大屏仍可演示)
-echo.
-echo   前端开发模式 (热更新): 另开窗口执行
-echo     cd frontend ^&^& npm run dev  ^(访问 http://localhost:5173^)
+echo   Dashboard started!
 echo ============================================================
+echo.
+echo   Dashboard URL : http://localhost:8083
+echo   REST API      : http://localhost:8083/api/overview
+echo   WebSocket     : ws://localhost:8083/ws/dashboard
+echo.
+echo   Data source:
+echo     * MQTT reachable  -^> Real Bridge (ESP32 -^> EMQX -^> Dashboard)
+echo     * MQTT unreachable -^> FakeBridge simulated data (demo still works)
+echo.
+echo   Frontend dev mode (hot reload), open another window and run:
+echo     cd frontend
+echo     npm run dev    ^(visit http://localhost:5173^)
+echo.
+echo   Keyboard shortcuts on dashboard:
+echo     F = fullscreen,  Esc = exit fullscreen,  R = reconnect WebSocket
+echo.
+echo   Close the popup backend window to stop the service.
+echo ============================================================
+echo.
 pause

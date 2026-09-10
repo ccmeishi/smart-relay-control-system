@@ -26,6 +26,7 @@ mimetypes.add_type("application/javascript", ".mjs")
 from flask import Flask, send_from_directory
 from flask_sock import Sock
 
+from log_setup import logger
 import db
 from api import bp as api_bp
 from ws_hub import (
@@ -101,16 +102,21 @@ class DataWatcher:
     def __init__(self, source: str):
         self.source = source              # 'bridge' | 'simulator'
         self.last_status = {}             # {key: value}
+        self.last_history_ts = {}         # {key: epoch} 上次写历史的时间 (P0-2: 30s 节流)
         self.last_max_alarm_id = 0
         self.last_rule_counts = {}       # {rule_id: trigger_count}
+        self._last_status_broadcast_ts = 0  # 上次广播 device_status 的时间 (P0-3: 1.5s 节流)
         self._stop = threading.Event()
+        # 节流阈值 (秒)
+        self.HISTORY_THROTTLE_SEC = 30    # 同一 key 至少 30s 才写一条历史
+        self.STATUS_BROADCAST_THROTTLE_SEC = 1.5  # device_status 事件最小间隔
 
     def run(self):
         # 初始化基线
         self._init_baseline()
         last_tick = 0
         last_cleanup = 0
-        print("[watcher] 数据轮询线程已启动")
+        logger.info("[watcher] 数据轮询线程已启动")
         while not self._stop.is_set():
             try:
                 self._poll_status()
@@ -125,10 +131,10 @@ class DataWatcher:
                 if now - last_cleanup >= 30:
                     deleted = db.cleanup_old_history()
                     if deleted:
-                        print(f"[watcher] 清理过期历史 {deleted} 条")
+                        logger.info(f"[watcher] 清理过期历史 {deleted} 条")
                     last_cleanup = now
             except Exception as e:
-                print(f"[watcher] 轮询异常: {e}")
+                logger.error(f"[watcher] 轮询异常: {e}")
             self._stop.wait(0.5)
 
     def _init_baseline(self):
@@ -142,11 +148,16 @@ class DataWatcher:
     def _poll_status(self):
         current = db.get_device_status_all()
         flat = {k: v["value"] for k, v in current.items()}
+        now = time.time()
         changed = False
         for k, v in flat.items():
-            if self.last_status.get(k) != v:
-                # 状态变化 → 写历史
-                db.record_history(k, v, source=self.source)
+            prev = self.last_status.get(k)
+            prev_ts = self.last_history_ts.get(k, 0)
+            if prev != v:
+                # P0-2: 30s 节流写历史 (变化时也至少 30s 才记一条; 首次变化立即记)
+                if prev is None or now - prev_ts >= self.HISTORY_THROTTLE_SEC:
+                    db.record_history(k, v, source=self.source)
+                    self.last_history_ts[k] = now
                 self.last_status[k] = v
                 changed = True
         # 删除已不存在的 key
@@ -155,7 +166,11 @@ class DataWatcher:
                 del self.last_status[k]
                 changed = True
         if changed:
-            hub.broadcast(EV_DEVICE_STATUS, flat)
+            # P0-3: device_status 事件 1.5s 节流, 抑制 ECharts 抖动 (首次立即推)
+            if self._last_status_broadcast_ts == 0 or \
+               now - self._last_status_broadcast_ts >= self.STATUS_BROADCAST_THROTTLE_SEC:
+                hub.broadcast(EV_DEVICE_STATUS, flat)
+                self._last_status_broadcast_ts = now
 
     def _poll_alarms(self):
         recent = db.get_recent_alarms(20)
@@ -203,13 +218,13 @@ def main():
     wt = threading.Thread(target=watcher.run, daemon=True)
     wt.start()
 
-    print("=" * 56)
-    print(f"  Day10.2 大屏后端已启动")
-    print(f"  REST API:  http://localhost:{port}/api/overview")
-    print(f"  WebSocket: ws://localhost:{port}/ws/dashboard")
-    print(f"  数据源:    {source}")
-    print(f"  大屏(dev): http://localhost:5173  (npm run dev)")
-    print("=" * 56)
+    logger.info("=" * 56)
+    logger.info(f"  Day10.2 大屏后端已启动")
+    logger.info(f"  REST API:  http://localhost:{port}/api/overview")
+    logger.info(f"  WebSocket: ws://localhost:{port}/ws/dashboard")
+    logger.info(f"  数据源:    {source}")
+    logger.info(f"  大屏(dev): http://localhost:5173  (npm run dev)")
+    logger.info("=" * 56)
 
     try:
         # threaded=True 支持多 WS 连接并发

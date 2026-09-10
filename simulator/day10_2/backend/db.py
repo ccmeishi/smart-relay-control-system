@@ -22,6 +22,8 @@ import hashlib
 import time
 from contextlib import contextmanager
 
+from log_setup import logger
+
 # --- 输入白名单正则 ---
 _RE_KEY = re.compile(r'^[a-z0-9_]{1,40}$')      # gateway_key: relay1 / temperature
 _RE_ID  = re.compile(r'^[a-z0-9-]{1,40}$')       # product_id / device_id: lock-cc / lock001
@@ -119,10 +121,13 @@ def load_gateway_config():
 def get_conn():
     """上下文管理器: 自动提交 + 关闭.
     WAL 模式支持 bridge 子进程与 Flask 进程并发读写.
+    P1-7: 加 busy_timeout + synchronous=NORMAL, 抑制 "database is locked".
     """
     conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=5000")     # P1-7: 5 秒锁等待
+    conn.execute("PRAGMA synchronous=NORMAL")     # P1-7: 性能/安全平衡 (WAL 下安全)
     conn.execute("PRAGMA foreign_keys = ON")
     try:
         yield conn
@@ -202,6 +207,8 @@ CREATE TABLE IF NOT EXISTS scene_rules (
     cooldown_sec    INTEGER DEFAULT 60,              -- 冷却时间(秒), 避免频繁触发
     last_triggered  TIMESTAMP,                       -- 上次触发时间 (NULL=未触发过)
     trigger_count   INTEGER DEFAULT 0,               -- 累计触发次数
+    last_observed_value TEXT,                          -- P1-8: 上次观测值 (稳定计数用, 跨进程持久化)
+    last_observed_count INTEGER DEFAULT 0,            -- P1-8: 连续相同值计数 (达到 STABLE_THRESHOLD 才评估)
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -297,6 +304,15 @@ def init_db(force: bool = False) -> None:
 
     with get_conn() as conn:
         conn.executescript(SCHEMA_SQL)
+
+        # P1-8: 迁移已有 scene_rules 表 (老库无 last_observed_value/count 列)
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(scene_rules)").fetchall()]
+        if 'last_observed_value' not in cols:
+            conn.execute("ALTER TABLE scene_rules ADD COLUMN last_observed_value TEXT")
+            logger.info("[init_db] 迁移: scene_rules + last_observed_value")
+        if 'last_observed_count' not in cols:
+            conn.execute("ALTER TABLE scene_rules ADD COLUMN last_observed_count INTEGER DEFAULT 0")
+            logger.info("[init_db] 迁移: scene_rules + last_observed_count")
 
         # 预填充路由 (INSERT OR IGNORE 避免重复)
         conn.executemany(
@@ -742,32 +758,48 @@ def delete_scene_rule(rule_id):
 
 
 # ============================================================
-# 稳定计数: 抑制传感器单次抖动 (human 在 0/1 间跳变时, 只连续出现 N 次才触发规则)
-# _sensor_stable = {gateway_key: {"value": last_val, "count": consecutive_count}}
+# P1-8: 稳定计数 — 已从进程内字典迁移到 SQLite 持久化.
+# 老方案 _sensor_stable = {gateway_key: {value, count}} 在 Bridge 重启后丢失,
+# 导致重启后首次评估被跳过 (count=1 不达 STABLE_THRESHOLD=2).
+# 新方案: 稳定状态写入 scene_rules.last_observed_value/count 列, 跨进程/重启保留.
 # STABLE_THRESHOLD: 连续多少次相同值才认为"稳定"并触发规则
 # ============================================================
-_sensor_stable = {}
 STABLE_THRESHOLD = 2  # 连续 2 次相同值才触发 (抑制单次毛刺)
 
 
-def _check_stable(gateway_key, value) -> bool:
-    """检查某采集点的值是否稳定 (连续 STABLE_THRESHOLD 次相同).
+def _check_stable_db(conn, gateway_key, value) -> bool:
+    """检查某采集点的值是否稳定 (基于 DB 持久化, 每条规则独立计数).
 
-    返回 True 表示值已稳定, 可以触发规则; False 表示可能是抖动.
+    在事务内更新所有 trigger_key 匹配规则的 last_observed_value/count,
+    只要至少一条规则达到稳定阈值即返回 True.
+
+    返回 True 表示有规则已稳定, 可以触发; False 表示所有规则仍在抖动期.
     """
-    state = _sensor_stable.get(gateway_key)
-    if state is None:
-        # 第一次出现, 初始化
-        _sensor_stable[gateway_key] = {"value": value, "count": 1}
-        return False  # 第一次不稳定, 不触发
-    if str(state["value"]) == str(value):
-        # 值没变, 计数+1
-        state["count"] += 1
-        return state["count"] >= STABLE_THRESHOLD
-    else:
-        # 值变了, 重置计数为 1 (新值第一次出现)
-        _sensor_stable[gateway_key] = {"value": value, "count": 1}
-        return False  # 变化后第一次不稳定
+    val_str = str(value)
+    # 查所有 trigger_key 匹配的规则 (不管 enabled, 稳定计数对禁用规则也更新, 避免启用后从 0 开始)
+    rows = conn.execute(
+        "SELECT id, last_observed_value, last_observed_count FROM scene_rules WHERE trigger_key=?",
+        (gateway_key,),
+    ).fetchall()
+    if not rows:
+        return False  # 没有规则匹配此 key, 直接返回
+
+    any_stable = False
+    for r in rows:
+        rid = r["id"]
+        last_val = r["last_observed_value"] if r["last_observed_value"] is not None else None
+        last_cnt = r["last_observed_count"] if r["last_observed_count"] is not None else 0
+        if last_val == val_str:
+            new_cnt = last_cnt + 1
+        else:
+            new_cnt = 1
+        if new_cnt >= STABLE_THRESHOLD:
+            any_stable = True
+        conn.execute(
+            "UPDATE scene_rules SET last_observed_value=?, last_observed_count=? WHERE id=?",
+            (val_str, new_cnt, rid),
+        )
+    return any_stable
 
 
 def evaluate_scene_rules(gateway_key, value) -> list:
@@ -780,19 +812,18 @@ def evaluate_scene_rules(gateway_key, value) -> list:
       }
 
     三层防护:
-      1. 稳定计数: 连续 STABLE_THRESHOLD 次相同值才触发 (抑制抖动)
+      1. 稳定计数: 连续 STABLE_THRESHOLD 次相同值才触发 (P1-8: 基于 DB 持久化)
       2. 冷却检查: 规则在 cooldown_sec 内不重复触发
       3. 条件评估: operator/value 匹配才触发
     动作层再加第四层: 动作目标互斥锁 (critical 锁 info)
     """
-    # ---- 第1层: 稳定计数检查 ----
-    if not _check_stable(gateway_key, value):
-        # 值不稳定 (第一次出现或刚变化), 跳过规则评估
-        return []
-
     now_ts = time.time()
     actions = []
     with get_conn() as conn:
+        # ---- 第1层: 稳定计数检查 (P1-8: 在同一事务内更新 + 判断) ----
+        if not _check_stable_db(conn, gateway_key, value):
+            return []  # 值不稳定 (第一次出现或刚变化), 跳过规则评估
+
         # 查所有启用的、trigger_key 匹配的规则
         rows = conn.execute(
             "SELECT * FROM scene_rules WHERE enabled=1 AND trigger_key=?",
@@ -892,42 +923,46 @@ def list_active_alarms(limit=50) -> list:
 
 
 def acknowledge_alarm(alarm_id, username=""):
-    """确认告警 (active → acknowledged)"""
+    """确认告警 (active → acknowledged). 返回受影响行数."""
     with get_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             """UPDATE alarm_records
                SET status='acknowledged', acknowledged_at=CURRENT_TIMESTAMP, acknowledged_by=?
                WHERE id=? AND status='active'""",
             (username, alarm_id),
         )
+        return cur.rowcount
 
 
 def clear_alarm(alarm_id):
-    """清除告警 (acknowledged → cleared, 或 active → cleared)"""
+    """清除告警 (acknowledged → cleared, 或 active → cleared). 返回受影响行数."""
     with get_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             "UPDATE alarm_records SET status='cleared' WHERE id=?",
             (alarm_id,),
         )
+        return cur.rowcount
 
 
 def acknowledge_all_alarms(username=""):
-    """一键确认所有 active 告警"""
+    """一键确认所有 active 告警. 返回受影响行数."""
     with get_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             """UPDATE alarm_records
                SET status='acknowledged', acknowledged_at=CURRENT_TIMESTAMP, acknowledged_by=?
                WHERE status='active'""",
             (username,),
         )
+        return cur.rowcount
 
 
 def clear_all_alarms():
-    """一键清除所有告警 (active + acknowledged → cleared)"""
+    """一键清除所有告警 (active + acknowledged → cleared). 返回受影响行数."""
     with get_conn() as conn:
-        conn.execute(
+        cur = conn.execute(
             "UPDATE alarm_records SET status='cleared' WHERE status IN ('active', 'acknowledged')"
         )
+        return cur.rowcount
 
 
 def get_alarm_stats() -> dict:
@@ -1006,7 +1041,7 @@ def get_history(gateway_key: str, minutes: int = 30) -> list:
         rows = conn.execute(
             """SELECT value, recorded_at, source FROM device_status_history
                WHERE gateway_key=?
-                 AND recorded_at >= datetime('now', ?)
+                 AND datetime(recorded_at) >= datetime('now', ?)
                ORDER BY recorded_at ASC""",
             (gateway_key, f"-{int(minutes)} minutes"),
         ).fetchall()
@@ -1025,7 +1060,7 @@ def get_latest_history_tick(minutes: int = 30) -> dict:
             rows = conn.execute(
                 """SELECT value, recorded_at FROM device_status_history
                    WHERE gateway_key=?
-                     AND recorded_at >= datetime('now', ?)
+                     AND datetime(recorded_at) >= datetime('now', ?)
                    ORDER BY recorded_at ASC""",
                 (k, f"-{int(minutes)} minutes"),
             ).fetchall()
@@ -1039,7 +1074,7 @@ def cleanup_old_history() -> int:
     retention = get_dashboard_config_value("history_retention_minutes", "60")
     with get_conn() as conn:
         cur = conn.execute(
-            "DELETE FROM device_status_history WHERE recorded_at < datetime('now', ?)",
+            "DELETE FROM device_status_history WHERE datetime(recorded_at) < datetime('now', ?)",
             (f"-{int(retention)} minutes",),
         )
         return cur.rowcount
@@ -1077,11 +1112,16 @@ def set_dashboard_config(key: str, value: str):
 # ============================================================
 # Day10.2 大屏专用: 设备概览 + 在线率
 # ============================================================
+# P1-5: 在线判定窗口 (秒). fake_bridge 每 2s 上报, 60s 内未更新视为离线.
+# 之前用 5 分钟, 演示时无法看到离线场景; 缩短到 60s 让断网立刻反映到大屏.
+ONLINE_TIMEOUT_SEC = 60
+
+
 def get_overview() -> dict:
-    """设备概览统计: total = 映射表设备数, online = 5 分钟内有上报的设备.
+    """设备概览统计: total = 映射表设备数, online = ONLINE_TIMEOUT_SEC 内有上报的设备.
 
     大屏无独立在线表, 用 device_status 的 updated_at 判断在线
-    (bridge/fake_bridge 周期上报, 5 分钟内更新视为在线).
+    (bridge/fake_bridge 周期上报, 60 秒内更新视为在线).
     """
     with get_conn() as conn:
         total = conn.execute(
@@ -1089,7 +1129,8 @@ def get_overview() -> dict:
         ).fetchone()["c"]
         online_rows = conn.execute(
             """SELECT COUNT(*) as c FROM device_status
-               WHERE updated_at >= datetime('now', '-5 minutes')"""
+               WHERE updated_at >= datetime('now', ?)""",
+            (f"-{ONLINE_TIMEOUT_SEC} seconds",),
         ).fetchone()
         online = online_rows["c"]
     offline = total - online

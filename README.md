@@ -1385,12 +1385,14 @@ Topic: /relay-cc/relaycc/properties/read
 
 如果你双击 bat 后看到一堆 `不是内部或外部命令` 的乱码报错，**99% 是 bat 文件换行符或编码问题**。本项目已修复，了解原因避免自己改坏：
 
-#### Windows bat 的两个硬性要求（其他平台无所谓）
+#### Windows bat 的四个硬性要求（其他平台无所谓）
 
 | 要求 | 正确 | 错误 | 现象 |
 |------|------|------|------|
-| **换行符必须 CRLF** | `\r\n` (0D 0A) | `\n` (0A) 只有 LF | cmd 把多行合并成一行，`set /p PORT=请输入...` 整个被当命令执行 → `'请输入' 不是内部或外部命令` |
-| **编码必须 ANSI (GBK)** | 用系统默认代码页 936，**不要写 chcp** | UTF-8 无 BOM，或 GBK 文件里加 `chcp 65001` | GBK 中文被按 UTF-8 解释 → 全屏 `????` 乱码 |
+| **换行符必须 CRLF** | `\r\n` (0D 0A) | `\n` (0A) 只有 LF | cmd 把多行合并成一行，`set /p PORT=请输入...` 整个被当命令执行 → `'请输入' 不是内部或外部命令`；含多行 `if(…)` 括号块时甚至直接闪退 |
+| **编码必须 ANSI (GBK)** | 用系统默认代码页 936，**不要写 chcp**；或干脆全英文 | UTF-8 无 BOM，或 GBK 文件里加 `chcp 65001` | GBK 中文被按 UTF-8 解释 → 全屏 `????` 乱码；多字节中文还会"吞掉"后面的 ASCII，出现 `'aho-mqtt' 不是命令`（paho-mqtt 的 p 被吞） |
+| **`if(…)` 块内不要出现字面括号** | 块内 echo/choice 文本用 `-` 代替 `(Y/N)` | 块里写 `choice /m "(Y/N)"` 或 `echo …(Node18+)` | cmd 解析整个块时括号配对错乱，报 `… was unexpected at this time` 并闪退（即使条件为假也会报） |
+| **所有退出分支都要 pause** | `exit /b` 前先 `pause` | 检测失败直接 `exit` | 双击时窗口一闪而过，看不到错误 |
 
 #### 验证脚本换行符
 
@@ -1412,7 +1414,7 @@ $content = $content -replace "`r?`n", "`r`n"
 
 | 报错现象 | 原因 | 解决 |
 |---------|------|------|
-| 双击后 cmd 一闪而过 | 脚本崩溃了 | 不要双击，先打开 cmd 再拖入 bat 执行，能看到完整错误 |
+| 双击后 cmd 一闪而过 | ① LF 换行；② `if(…)` 块内含字面括号报 `was unexpected`；③ 某检测分支直接 exit | 见上面「四个硬性要求」；或先开 cmd 再拖入 bat 执行看完整错误。Day10.2 的 start_all.bat 已全部修好 |
 | `'python' 不是内部或外部命令` | Python 未加 PATH | `where python` 查有没有，没有就重装勾上 Add to PATH |
 | `'mpremote'` / `'esptool'` 找不到 | 没装 | `pip install mpremote esptool pyserial` |
 | 双击没反应（窗口不弹） | 文件关联坏了或编码完全错乱 | 右键→打开方式→cmd.exe，或用 PowerShell `& "path\script.bat"` |
@@ -1772,13 +1774,73 @@ start_all.bat
 ### 15.5 验证场景联动
 
 ```bat
-:: 终端1: 设置温度=36°C (写360, 因为scale=0.1)
-python set_modbus.py 360 600 1 50
+:: 终端1: 设置温度=36°C (set_modbus 填的是真实单位°C, 程序内部自动 x10 写寄存器)
+python set_modbus.py 36 60 1 50
 
 :: 终端2: 查看告警
 :: 浏览器打开 http://127.0.0.1:8081/alarms
 :: 看到 critical 告警「高温自动断电」→ 点击确认 → 点击清除
 ```
+
+> ⚠️ `set_modbus.py` 命令行填**真实单位**（摄氏度/百分比/0~100），不是寄存器原始值：
+> 造 36°C 用 `set_modbus.py 36 ...`（内部自动写成寄存器 360）；**不要填 360**（那会被当成 360°C）。
+> 该工具默认连 `192.168.20.59:5502`（写死在文件顶部 MODBUS_IP），本机自测改成 `127.0.0.1`。
+>
+> 📌 Day10 依赖真实 ESP32 + 实验室 MQTT；**没有硬件只想看联动/告警效果，请用 [Day10.2](simulator/day10_2/README.md)**（内置模拟源，双击即跑）。
+
+---
+
+## 十六、Day10.2：Vue3 实时监控大屏（无硬件也能演）
+
+> **完整新手教程（每个文件作用 / 从零运行 / 在线率口径 / 全部踩坑）见 [simulator/day10_2/README.md](simulator/day10_2/README.md)**
+
+### 16.1 解决什么问题
+
+Day10 的 Web 后台是给管理员用的表格页。Day10.2 用 **Vue3 + ECharts + WebSocket** 做一块深色科技风**实时大屏**（端口 **8083，免登录**）：折线实时滚动、继电器可点控、告警/规则实时弹出，并且**连不上 MQTT / 没有 ESP32 时自动回退模拟数据，大屏永不空白**——在自己电脑上双击就能演示完整全链路。
+
+### 16.2 一键运行
+
+```bat
+cd simulator\day10_2
+start_all.bat
+:: 自动装 Python 依赖 → 检测 8083 端口 → 首次自动构建前端 → 启动 → 8 秒后开浏览器
+:: 大屏地址 http://localhost:8083 （仓库已带 frontend/dist，一般不用装 Node）
+```
+
+强制模拟（无网/无板子现场演示）：
+```bat
+set DAY102_FORCE_FAKE=1
+cd backend && python app.py
+```
+
+### 16.3 六个大屏模块
+
+设备概览（总数/在线/离线/在线率）· 通道状态（4 路继电器，**点击即 MQTT 下发**）· 告警信息（今日/未处理/已处理 + 级别环图 + 滚动列表 + 全部确认/清除）· 数据趋势（温/湿/人/烟 ECharts 实时折线）· 场景联动（全部规则卡片 + 真实触发次数）· 设备在线率环图。
+快捷键：`F` 全屏、`Esc` 退出、`R` 重连 WebSocket；页面小屏可纵向滚动不裁切。
+
+### 16.4 关键机制 & 口径
+
+- **在线率 = 最近 60 秒内有数据上报的通道数 ÷ 8**；数据源每 2 秒刷新时间，停报超 60 秒判离线（模拟源每约 80 秒让一个传感器断网 75 秒演示离线→自愈）。
+- **进程解耦**：Bridge 与 Flask 是两个进程，统一通过 SQLite（WAL 多进程）通信；Flask 后台线程每 0.5 秒扫库→历史每 key 30 秒存一点（留 60 分钟）→WebSocket 1.5 秒节流广播（继电器点击即时反馈）。
+- **告警数 vs 规则触发次数不是一回事**：告警数是 `alarm_records` 事件条数；触发次数是 `scene_rules.trigger_count`（存库重启不清零）。高温>35、烟雾>50 在正常模拟值（24~31 / 3~20）下到不了，所以为 0 是对的；模拟源每约 2 分钟异常冲高（温度→37 / 烟雾→62）专门演示严重联动。
+- 新增两张表：`device_status_history`（折线时序）、`dashboard_config`；并把规则稳定计数落库（重启不误判）。
+
+### 16.5 Day10 vs Day10.2
+
+| 项 | Day10 | Day10.2 |
+|----|-------|---------|
+| 界面 | Flask 表格后台（8081，登录） | Vue3+ECharts 实时大屏（**8083，免登录**） |
+| 实时 | 30 秒轮询 | WebSocket 实时推送 + 自动重连 |
+| 硬件 | 必须真实 ESP32 + 实验室 MQTT | **无硬件自动模拟，有硬件自动切真实** |
+| 数据库 | day10/iot_platform.db | day10_2/iot_platform.db（独立） |
+
+### 16.6 Day10.2 踩坑速查
+
+完整 13 条见 [day10_2/README.md 故障排查](simulator/day10_2/README.md#十一故障排查这一阶段踩过的坑都在这)，最关键三条：
+
+1. **bat 双击闪退**：文件是 LF 换行 + `if(…)` 块内文本含字面括号（如 `(Y/N)`），cmd 报 `… was unexpected at this time`。解法：bat 统一 **CRLF + 纯 ASCII 英文**，`if` 块内不出现括号，退出分支加 `pause`。
+2. **大屏空白 + MIME 报错**：Windows 下 Flask 偶尔把 `.js` 当 `text/plain`，在 `app.py` 用 `mimetypes.add_type("application/javascript",".js")` 修正。
+3. **折线图查出全量历史**：`recorded_at` 是带 `T` 的 ISO 格式，和 `datetime('now')` 字符串比较失效，要写 `datetime(recorded_at) >= datetime('now',…)`。
 
 ---
 

@@ -15,6 +15,7 @@ import time
 
 from flask import Blueprint, jsonify, request
 
+from log_setup import logger
 import db
 from ws_hub import hub, EV_RELAY_CHANGED, EV_DEVICE_STATUS
 
@@ -45,10 +46,10 @@ def _get_mqtt_client():
         client.loop_start()
         time.sleep(0.5)  # 等待连接建立
         _mqtt_client = client
-        print(f"[api] MQTT 下发客户端已连接 {cfg['mqtt_host']}:{cfg['mqtt_port']}")
+        logger.info(f"[api] MQTT 下发客户端已连接 {cfg['mqtt_host']}:{cfg['mqtt_port']}")
         return _mqtt_client
     except Exception as e:
-        print(f"[api] MQTT 连接失败 (大屏可演示, 设备不下发): {e}")
+        logger.error(f"[api] MQTT 连接失败 (大屏可演示, 设备不下发): {e}")
         return None
 
 
@@ -66,10 +67,10 @@ def _publish_relay_write(props: dict) -> bool:
     }
     try:
         client.publish(topic, json.dumps(payload), qos=1)
-        print(f"[api] ↓ MQTT 下发 {topic}: {props}")
+        logger.info(f"[api] ↓ MQTT 下发 {topic}: {props}")
         return True
     except Exception as e:
-        print(f"[api] MQTT 下发失败: {e}")
+        logger.error(f"[api] MQTT 下发失败: {e}")
         return False
 
 
@@ -98,6 +99,14 @@ def alarm_stats():
         "warning": stats.get("warning", 0),
         "critical": stats.get("critical", 0),
     }
+    # P2-14: 今日新增告警数 (按 SQLite 当天日期筛选, 修复"今日告警"显示全量的问题)
+    import sqlite3
+    with sqlite3.connect(db.DB_PATH) as conn:
+        today_row = conn.execute(
+            "SELECT COUNT(*) as c FROM alarm_records "
+            "WHERE triggered_at >= date('now', 'start of day')"
+        ).fetchone()
+    stats["today"] = today_row[0] if today_row else 0
     return jsonify(stats)
 
 
@@ -136,6 +145,30 @@ def history(gateway_key):
     minutes = request.args.get("minutes", default=30, type=int)
     minutes = max(1, min(minutes, 180))
     return jsonify(db.get_history(gateway_key, minutes))
+
+
+# ============================================================
+# 告警操作接口 (P1-4: 大屏演示 ack/clear 流程)
+# ============================================================
+@bp.post("/alarms/<int:aid>/ack")
+def alarm_ack(aid):
+    """确认单条告警 (active → acknowledged)"""
+    n = db.acknowledge_alarm(aid, username="dashboard")
+    return jsonify({"ok": True, "affected": n})
+
+
+@bp.post("/alarms/ack-all")
+def alarm_ack_all():
+    """一键确认所有 active 告警"""
+    n = db.acknowledge_all_alarms(username="dashboard")
+    return jsonify({"ok": True, "count": n})
+
+
+@bp.post("/alarms/clear-all")
+def alarm_clear_all():
+    """一键清除所有告警 (active + acknowledged → cleared)"""
+    n = db.clear_all_alarms()
+    return jsonify({"ok": True, "count": n})
 
 
 # ============================================================

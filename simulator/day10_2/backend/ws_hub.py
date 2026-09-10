@@ -16,6 +16,8 @@ import json
 import threading
 import time
 
+from log_setup import logger
+
 
 # 事件类型常量
 EV_DEVICE_STATUS = "device_status"
@@ -36,12 +38,12 @@ class WsHub:
     def register(self, ws):
         with self._lock:
             self.clients.add(ws)
-        print(f"[ws] 大屏已连接, 当前连接数: {len(self.clients)}")
+        logger.info(f"[ws] 大屏已连接, 当前连接数: {len(self.clients)}")
 
     def unregister(self, ws):
         with self._lock:
             self.clients.discard(ws)
-        print(f"[ws] 大屏断开, 当前连接数: {len(self.clients)}")
+        logger.info(f"[ws] 大屏断开, 当前连接数: {len(self.clients)}")
 
     @property
     def client_count(self) -> int:

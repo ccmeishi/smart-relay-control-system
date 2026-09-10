@@ -17,5 +17,9 @@ export default {
   recentAlarms: (limit = 10) => http.get(`/alarms/recent?limit=${limit}`),
   sceneRules: () => http.get('/scene-rules'),
   history: (key, minutes = 30) => http.get(`/history/${key}?minutes=${minutes}`),
-  toggleRelay: (key, value) => http.post('/devices/toggle', { key, value })
+  toggleRelay: (key, value) => http.post('/devices/toggle', { key, value }),
+  // P1-4: 告警操作 (ack/clear)
+  ackAlarm: (id) => http.post(`/alarms/${id}/ack`),
+  ackAllAlarms: () => http.post('/alarms/ack-all'),
+  clearAllAlarms: () => http.post('/alarms/clear-all')
 }

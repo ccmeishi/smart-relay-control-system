@@ -11,12 +11,17 @@
           :disabled="busy === r.key"
           @click="onToggle(r.key)"
         >
-          <svg viewBox="0 0 24 24" class="relay-icon">
+          <!-- P2-9: busy 时显示旋转 spinner, 否则显示继电器图标 -->
+          <svg v-if="busy === r.key" class="spinner" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor"
+              stroke-width="3" stroke-dasharray="40 20" stroke-linecap="round"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" class="relay-icon">
             <path :fill="isOn(r.key) ? '#67c23a' : '#5a6678'"
               d="M12 2a7 7 0 0 0-7 7v6a3 3 0 0 0 3 3h8a3 3 0 0 0 3-3V9a7 7 0 0 0-7-7zm-3 7a1 1 0 0 1 1-1h4a1 1 0 1 1 0 2h-4a1 1 0 0 1-1-1z"/>
           </svg>
           <div class="relay-name">{{ r.name }}</div>
-          <div class="relay-state">{{ isOn(r.key) ? 'ON' : 'OFF' }}</div>
+          <div class="relay-state">{{ busy === r.key ? '下发中' : (isOn(r.key) ? 'ON' : 'OFF') }}</div>
         </button>
       </div>
       <div class="hint">点击按钮切换继电器 (下行 MQTT 控制)</div>
@@ -79,6 +84,16 @@ async function onToggle(key) {
   box-shadow: 0 0 16px rgba(103,194,58,0.25) inset, 0 0 10px rgba(103,194,58,0.2);
 }
 .relay-icon { width: 34px; height: 34px; }
+/* P2-9: 下发中旋转 spinner */
+.spinner {
+  width: 34px; height: 34px;
+  color: #6db3ff;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0); }
+  to   { transform: rotate(360deg); }
+}
 .relay-name { font-size: 14px; font-weight: 600; color: #cfe3ff; }
 .relay-state {
   font-family: 'Orbitron', monospace;
